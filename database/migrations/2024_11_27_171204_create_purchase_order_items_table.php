@@ -18,6 +18,7 @@ return new class extends Migration
             $table->integer('requested_quantity');
             $table->integer('received_quantity')->default(0);
             $table->decimal('price', 10, 2);
+            $table->decimal('retail_price', 10, 2)->nullable();
             $table->timestamps();
             $table->softDeletes(); // Add soft deletes
         });

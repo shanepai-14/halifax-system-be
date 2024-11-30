@@ -15,7 +15,8 @@ return new class extends Migration
             $table->id(); // Auto-increment primary key
             $table->string('product_name', 100);
             $table->unsignedBigInteger('product_category_id'); // Foreign key for categories
-            $table->integer('reorder_level'); // Minimum stock level before reorder
+            $table->integer('reorder_level');
+            $table->string('product_image')->nullable();
             $table->timestamps();
             $table->softDeletes();
         });

@@ -4,10 +4,14 @@ namespace App\Services;
 
 use App\Models\Product;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use App\Models\ProductCategory;
-use Exception;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
+use Exception;
+use Illuminate\Support\Facades\Log;
 
 class ProductService
 {
@@ -18,6 +22,16 @@ class ProductService
         'custom' => 'C',    // Custom orders
     ];
 
+    public function getProductById(string $id): Product
+{
+    try {
+        return Product::with(['category', 'attributes'])
+            ->findOrFail($id);
+    } catch (ModelNotFoundException $e) {
+        throw new Exception("Product with ID {$id} not found");
+    }
+}
+
     protected function generateProductCode(ProductCategory $category, array $data): string
     {
         try {
@@ -25,16 +39,20 @@ class ProductService
             $prefix = $category->prefix;
             
             // Get product type (default to 'F' for finished products)
-            $type = $data['product_type'] ?? 'F';
-            $typeCode = self::PRODUCT_TYPES[$type] ?? 'F';
+            $type = $data['product_type'] ;
+            $typeCode = self::PRODUCT_TYPES[$type];
 
             // Get the current year's last 2 digits
             $year = Carbon::now()->format('y');
 
             // Get the last product number for this category and year
-            $lastProduct = Product::where('product_code', 'like', "{$prefix}{$typeCode}{$year}%")
+            $lastProduct = Product::where('product_code', 'like', "{$prefix}-{$typeCode}-{$year}%")
                                 ->orderBy('product_code', 'desc')
                                 ->first();
+        
+                                Log::alert($prefix. " ". $typeCode. " ". $year);
+                                Log::alert($lastProduct);
+
 
             if ($lastProduct) {
                 $lastNumber = (int) substr($lastProduct->product_code, -4);
@@ -184,4 +202,31 @@ class ProductService
     {
         return self::PRODUCT_TYPES;
     }
+
+    public function uploadProductImage(string $id, UploadedFile $image): Product
+{
+    try {
+        DB::beginTransaction();
+
+        $product = $this->getProductById($id);
+        
+        // Delete old image if exists
+        if ($product->product_image) {
+            Storage::disk('public')->delete($product->product_image);
+        }
+
+        // Store with custom filename (product ID + extension)
+        $extension = $image->getClientOriginalExtension();
+        $fileName = "product_{$id}.{$extension}";
+        $path = $image->storeAs('products', $fileName, 'public');
+        
+        $product->update(['product_image' => $path]);
+
+        DB::commit();
+        return $product;
+    } catch (Exception $e) {
+        DB::rollBack();
+        throw new Exception('Failed to upload product image: ' . $e->getMessage());
+    }
+}
 }

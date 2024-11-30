@@ -13,6 +13,7 @@ return new class extends Migration
     {
         Schema::create('purchase_orders', function (Blueprint $table) {
             $table->id('po_id');
+            $table->string('po_number')->unique();
             $table->foreignId('supplier_id')->constrained('suppliers', 'supplier_id');
             $table->timestamp('po_date');
             $table->decimal('total_amount', 10, 2);

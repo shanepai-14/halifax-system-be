@@ -16,7 +16,8 @@ class Product extends Model
         'product_code',
         'product_name',
         'product_category_id',
-        'reorder_level'
+        'reorder_level',
+        'product_image'
     ];
 
     // Relationship with ProductCategory
