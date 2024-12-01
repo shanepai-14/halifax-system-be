@@ -143,18 +143,19 @@ class PurchaseOrderService
     {
         try {
             DB::beginTransaction();
-
+    
             $purchaseOrder = $this->getPurchaseOrderByPONumber($poNumber);
-
+    
             // Update PO details
             $purchaseOrder->update([
-                'supplier_id' => $data['supplier_id'] ?? $purchaseOrder->supplier_id,
-                'po_date' => $data['po_date'] ?? $purchaseOrder->po_date,
-                'remarks' => $data['remarks'] ?? $purchaseOrder->remarks,
-                'invoice' => $data['invoice'] ?? $purchaseOrder->invoice,
-                'status' => $data['status'] ?? $purchaseOrder->status,
-            ]);
 
+                'supplier_id' => $data['supplier_id'] ?? $purchaseOrder->supplier_id,
+                'po_date'     => $data['po_date'] ?? $purchaseOrder->po_date,
+                'remarks'     => $data['remarks'] ?? $purchaseOrder->remarks,
+                'invoice'     => $data['invoice'] ?? $purchaseOrder->invoice,
+                'status'      => $data['status'] ?? $purchaseOrder->status,
+            ]);
+    
             // Update or create items if provided
             if (isset($data['items'])) {
                 // Delete existing items not in the new data
@@ -162,9 +163,11 @@ class PurchaseOrderService
                 $purchaseOrder->items()
                     ->whereNotIn('po_item_id', array_filter($newItemIds))
                     ->delete();
-
+    
                 // Update or create items
                 $totalAmount = 0;
+                $status = $data['status'] ?? $purchaseOrder->status;
+                
                 foreach ($data['items'] as $item) {
                     if (isset($item['po_item_id'])) {
                         $poItem = PurchaseOrderItem::find($item['po_item_id']);
@@ -174,13 +177,19 @@ class PurchaseOrderService
                     } else {
                         $poItem = $purchaseOrder->items()->create($item);
                     }
-                    $totalAmount += $poItem->price * $poItem->requested_quantity;
+    
+                    // Calculate total based on status
+                    if ($status === 'completed') {
+                        $totalAmount += $poItem->price * ($poItem->received_quantity ?? 0);
+                    } else {
+                        $totalAmount += $poItem->price * $poItem->requested_quantity;
+                    }
                 }
-
+    
                 // Update total amount
                 $purchaseOrder->update(['total_amount' => $totalAmount]);
             }
-
+    
             DB::commit();
             return $purchaseOrder->load(['supplier', 'items.product']);
         } catch (Exception $e) {

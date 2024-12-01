@@ -174,23 +174,19 @@ class ProductService
         }
     }
 
-    public function deleteProduct(Product $product): bool
+    public function deleteProduct(Product $product): bool 
     {
-        try {
-            DB::beginTransaction();
-            
-            // Delete related attribute values first
-            $product->attributes()->detach();
-            
-            // Delete the product
-            $deleted = $product->delete();
-            
-            DB::commit();
-            return $deleted;
-        } catch (Exception $e) {
-            DB::rollBack();
-            throw $e;
-        }
+        return $product->delete(); // This will soft delete
+    }
+
+    public function forceDeleteProduct(Product $product): bool
+    {
+        return $product->forceDelete(); // This will permanently delete
+    }
+
+    public function restoreProduct(Product $product): bool
+    {
+        return $product->restore(); // To restore a soft deleted product
     }
 
     public function getProductDetails(Product $product): Product

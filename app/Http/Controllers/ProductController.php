@@ -109,11 +109,20 @@ class ProductController extends Controller
     public function destroy(Product $product): JsonResponse
     {
         try {
-            $this->productService->deleteProduct($product);
+            // Check if product is already soft deleted
+            if ($product->trashed()) {
+                // Permanently delete if already soft deleted
+                $this->productService->forceDeleteProduct($product);
+                $message = 'Product permanently deleted successfully';
+            } else {
+                // Soft delete if not already deleted
+                $this->productService->deleteProduct($product);
+                $message = 'Product deleted successfully';
+            }
             
             return response()->json([
                 'status' => 'success',
-                'message' => 'Product deleted successfully'
+                'message' => $message
             ]);
         } catch (Exception $e) {
             return response()->json([
