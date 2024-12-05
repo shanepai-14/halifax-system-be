@@ -89,20 +89,14 @@ class SupplierService
     /**
      * Delete supplier
      */
-    public function deleteSupplier(int $id): bool
+    public function deleteSupplier(int $id): bool 
     {
         try {
             DB::beginTransaction();
-
+            
             $supplier = $this->getSupplierById($id);
-
-            // Check for related purchase orders
-            if ($supplier->purchaseOrders()->exists()) {
-                throw new Exception('Cannot delete supplier with existing purchase orders');
-            }
-
-            $supplier->delete();
-
+            $supplier->delete(); // This will trigger soft delete
+            
             DB::commit();
             return true;
         } catch (Exception $e) {
