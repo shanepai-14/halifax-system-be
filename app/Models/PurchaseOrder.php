@@ -14,6 +14,7 @@ class PurchaseOrder extends Model
     protected $fillable = [
         'supplier_id',
         'po_number', 
+        'batch_number',
         'po_date',
         'total_amount',
         'status',
@@ -69,4 +70,28 @@ class PurchaseOrder extends Model
 
         $this->save();
     }
+    public function additionalCosts()
+    {
+        return $this->hasMany(PurchaseOrderAdditionalCost::class, 'po_id', 'po_id');
+    }
+
+    public function calculateTotalWithCosts()
+    {
+        $subtotal = $this->items->sum(function($item) {
+            return $item->price * $item->requested_quantity;
+        });
+
+        $additionalCosts = $this->additionalCosts->sum(function($cost) {
+            return $cost->costType->is_deduction ? -$cost->amount : $cost->amount;
+        });
+
+        return $subtotal + $additionalCosts;
+    }
+
+    public function received_items()
+    {
+        return $this->hasMany(PurchaseOrderReceivedItem::class, 'po_id', 'po_id');
+    }
+
+
 }

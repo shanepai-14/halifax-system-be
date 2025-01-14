@@ -7,6 +7,9 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\Log;
+use App\Models\PurchaseOrder;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Storage;
 use Exception;
 
@@ -66,12 +69,18 @@ class PurchaseOrderController extends Controller
                 'attachment' => 'nullable|string',
                 'items' => 'required|array|min:1',
                 'items.*.product_id' => 'required|exists:products,id',
+                'items.*.attribute_id' => 'required|exists:attributes,id',
                 'items.*.requested_quantity' => 'required|integer|min:1',
-                'items.*.price' => 'required|numeric|min:0'
+                'items.*.price' => 'required|numeric|min:0',
+                // Add validation for additional costs
+                'additional_costs' => 'nullable|array',
+                'additional_costs.*.cost_type_id' => 'required|exists:additional_cost_types,cost_type_id',
+                'additional_costs.*.amount' => 'required|numeric|min:0',
+                'additional_costs.*.remarks' => 'nullable|string'
             ]);
-
+    
             $purchaseOrder = $this->purchaseOrderService->createPurchaseOrder($validated);
-
+    
             return response()->json([
                 'status' => 'success',
                 'data' => $purchaseOrder,
@@ -122,12 +131,28 @@ public function update(Request $request, string $poNumber): JsonResponse
             'items' => 'sometimes|array|min:1',
             'items.*.po_item_id' => 'sometimes|exists:purchase_order_items,po_item_id',
             'items.*.product_id' => 'required|exists:products,id',
+            'items.*.attribute_id' => 'required|exists:attributes,id',
             'items.*.requested_quantity' => 'required|integer|min:1',
             'items.*.received_quantity' => 'nullable|integer|min:0',
             'items.*.price' => 'required|numeric|min:0',
             'items.*.retail_price' => 'nullable|numeric|min:0',
+            'received_items' => 'nullable|array|min:0',
+            'received_items.*.po_id' => 'nullable|exists:purchase_orders,po_id',
+            'received_items.*.product_id' => 'nullable|exists:products,id',
+            'received_items.*.attribute_id' => 'nullable|exists:attributes,id',
+            'received_items.*.received_quantity' => 'nullable|numeric|min:1',
+            'received_items.*.cost_price' => 'nullable|numeric|min:0',
+            'received_items.*.walk_in_price' => 'nullable|numeric|min:0',
+            'received_items.*.term_price' => 'nullable|numeric|min:0',
+            'received_items.*.wholesale_price' => 'nullable|numeric|min:0',
+            'received_items.*.regular_price' => 'nullable|numeric|min:0',
+            'received_items.*.remarks' => 'nullable|string|max:255',
             'status' => 'required|string',
             'invoice' => 'nullable|string',
+            'additional_costs' => 'nullable|array',
+            'additional_costs.*.cost_type_id' => 'required|exists:additional_cost_types,cost_type_id',
+            'additional_costs.*.amount' => 'required|numeric|min:0',
+            'additional_costs.*.remarks' => 'nullable|string'
         ]);
 
         $purchaseOrder = $this->purchaseOrderService->updatePurchaseOrder($poNumber, $validated);
@@ -141,6 +166,48 @@ public function update(Request $request, string $poNumber): JsonResponse
         return response()->json([
             'status' => 'error',
             'message' => 'Error updating purchase order',
+            'error' => $e->getMessage()
+        ], 500);
+    }
+}
+
+public function updateStatus(Request $request, String $poNumber)
+{
+    try {
+        $validator = Validator::make($request->all(), [
+            'status' => [
+                'required',
+                Rule::in([
+                    PurchaseOrder::STATUS_PENDING,
+                    PurchaseOrder::STATUS_PARTIALLY_RECEIVED,
+                    PurchaseOrder::STATUS_COMPLETED,
+                    PurchaseOrder::STATUS_CANCELLED
+                ])
+            ]
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Validation failed',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        $purchaseOrder = $this->purchaseOrderService->updatePurchaseOrderStatus(
+            $poNumber, 
+            $request->status
+        );
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Purchase order status updated successfully',
+            'data' => $purchaseOrder
+        ]);
+    } catch (Exception $e) {
+        return response()->json([
+            'status' => 'error',
+            'message' => 'Failed to update purchase order status',
             'error' => $e->getMessage()
         ], 500);
     }

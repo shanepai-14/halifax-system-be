@@ -18,7 +18,8 @@ class PurchaseOrderItem extends Model
         'requested_quantity',
         'received_quantity',
         'price',
-        'retail_price'
+        'retail_price',
+        'attribute_id'
     ];
 
     protected $casts = [
@@ -37,6 +38,10 @@ class PurchaseOrderItem extends Model
     {
         return $this->belongsTo(Product::class, 'product_id', 'id');
     }
+    public function attribute()
+    {
+        return $this->belongsTo(Attribute::class, 'attribute_id', 'id');
+    }
 
     // Calculate total price for the item
     public function getTotalAttribute()
@@ -53,6 +58,7 @@ class PurchaseOrderItem extends Model
         // Update parent PO status
         $this->purchaseOrder->updateStatus();
     }
+
 
     // Force delete with inventory adjustment if needed
     protected static function boot()

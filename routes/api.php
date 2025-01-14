@@ -8,6 +8,8 @@ use App\Http\Controllers\ProductController;
 use App\Http\Controllers\ProductCategoryController;
 use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\PurchaseOrderController;
+use App\Http\Controllers\PurchaseOrderAdditionalCostController;
+use App\Http\Controllers\AdditionalCostTypeController;
 
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
@@ -16,6 +18,10 @@ Route::post('/login', [AuthController::class, 'login']);
         Route::post('/logout', [AuthController::class, 'logout']);
 
         Route::middleware('role:admin')->group(function () {
+
+            Route::apiResource('purchase-order-costs', PurchaseOrderAdditionalCostController::class);
+            Route::apiResource('additional-cost-types', AdditionalCostTypeController::class);
+            Route::put('additional-cost-types/{id}/toggle-active', [AdditionalCostTypeController::class, 'toggleActive']);
 
             Route::apiResource('attributes', AttributeController::class);
             Route::apiResource('products', ProductController::class);
@@ -42,6 +48,7 @@ Route::post('/login', [AuthController::class, 'login']);
                 Route::put('/{id}/received', [PurchaseOrderController::class, 'updateReceived']);
                 Route::put('/{id}/cancel', [PurchaseOrderController::class, 'cancel']);
                 Route::post('/{poNumber}/attachment', [PurchaseOrderController::class, 'uploadAttachment']);
+                Route::put('/{poNumber}/status', [PurchaseOrderController::class, 'updateStatus']);
             });
 
 
