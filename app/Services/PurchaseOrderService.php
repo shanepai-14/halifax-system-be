@@ -150,6 +150,7 @@ class PurchaseOrderService
                 'additionalCosts.costType',
                 'received_items.product',
                 'received_items.attribute',
+                'attachments'  // Added this line
             ])
             ->where('po_number', $poNumber)
             ->firstOrFail();

@@ -4,10 +4,11 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use App\Traits\HasAttachments;
 
 class PurchaseOrder extends Model
 {
-    use HasFactory;
+    use HasFactory, HasAttachments;
 
     protected $primaryKey = 'po_id';
 

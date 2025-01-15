@@ -10,6 +10,7 @@ use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\PurchaseOrderController;
 use App\Http\Controllers\PurchaseOrderAdditionalCostController;
 use App\Http\Controllers\AdditionalCostTypeController;
+use App\Http\Controllers\AttachmentController;
 
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
@@ -49,11 +50,15 @@ Route::post('/login', [AuthController::class, 'login']);
                 Route::put('/{id}/cancel', [PurchaseOrderController::class, 'cancel']);
                 Route::post('/{poNumber}/attachment', [PurchaseOrderController::class, 'uploadAttachment']);
                 Route::put('/{poNumber}/status', [PurchaseOrderController::class, 'updateStatus']);
+                Route::post('/{poNumber}/attachments', [AttachmentController::class, 'uploadPOAttachment']);
+                Route::get('/{poNumber}/attachments', [AttachmentController::class, 'getPOAttachments']);
             });
 
+             Route::post('attachments/{attachmentId}', [AttachmentController::class, 'deleteAttachment']);
 
-
-
+             Route::get('storage/{path}', function($path) {
+                return response()->download(storage_path('app/public/' . $path));
+            })->where('path', '.*');
 
         });
     });
