@@ -22,7 +22,9 @@ class PurchaseOrderReceivedItem extends Model
         'term_price',
         'wholesale_price',
         'regular_price',
-        'remarks'
+        'remarks',
+        'processed_for_inventory',
+        'processed_at'
     ];
 
     protected $casts = [

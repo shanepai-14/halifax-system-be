@@ -4,16 +4,26 @@ namespace App\Services;
 
 use App\Models\PurchaseOrder;
 use App\Models\PurchaseOrderItem;
-use App\Models\PurchaseOrderReceivedItem;
+use App\Models\ReceivingReport;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
+use App\Services\ProductService;
 use InvalidArgumentException;
+use Illuminate\Support\Facades\Log;
 
 use Exception;
 
 class PurchaseOrderService
 {
+
+    protected $productService;
+
+    public function __construct(ProductService $productService)
+    {
+        $this->productService = $productService;
+    }
+
     private function generatePoNumber(): string
     {
         $year = date('Y');
@@ -150,25 +160,85 @@ class PurchaseOrderService
     /**
      * Update purchase order
      */
+    // public function updatePurchaseOrder(String $poNumber, array $data): PurchaseOrder
+    // {
+    //     try {
+    //         DB::beginTransaction();
+    
+    //         $purchaseOrder = $this->getPurchaseOrderByPONumber($poNumber);
+    //         $currentStatus = $purchaseOrder->status;
+    
+    //         // Update PO details
+    //         $purchaseOrder->update([
+    //             'supplier_id' => $data['supplier_id'] ?? $purchaseOrder->supplier_id,
+    //             'po_date'     => $data['po_date'] ?? $purchaseOrder->po_date,
+    //             'remarks'     => $data['remarks'] ?? $purchaseOrder->remarks,
+    //             'invoice'     => $data['invoice'] ?? $purchaseOrder->invoice,
+    //             'status'      => $data['status'] ?? $purchaseOrder->status,
+    //         ]);
+    
+    //         $totalAmount = 0;
+    
+    //         // Handle items only when status is PENDING
+    //         if (isset($data['items']) && $currentStatus === PurchaseOrder::STATUS_PENDING) {
+    //             // When status is pending, allow updating PurchaseOrderItems
+    //             $newItemIds = array_column($data['items'], 'po_item_id');
+    //             $purchaseOrder->items()
+    //                 ->whereNotIn('po_item_id', array_filter($newItemIds))
+    //                 ->delete();
+    
+    //             foreach ($data['items'] as $item) {
+    //                 if (isset($item['po_item_id'])) {
+    //                     $poItem = PurchaseOrderItem::find($item['po_item_id']);
+    //                     if ($poItem) {
+    //                         $poItem->update($item);
+    //                     }
+    //                 } else {
+    //                     $poItem = $purchaseOrder->items()->create($item);
+    //                 }
+    //                 $totalAmount += $poItem->price * $poItem->requested_quantity;
+    //             }
+    //         } else {
+    //             // Calculate total amount from existing items if not updating items
+    //             foreach ($purchaseOrder->items as $existingItem) {
+    //                 $totalAmount += $existingItem->price * $existingItem->requested_quantity;
+    //             }
+    //         }
+    
+    //         // Update total amount
+    //         $purchaseOrder->update(['total_amount' => $totalAmount]);
+    
+    //         DB::commit();
+    //         return $purchaseOrder->load([
+    //             'supplier', 
+    //             'items.product'
+    //         ]);
+    //     } catch (Exception $e) {
+    //         DB::rollBack();
+    //         throw new Exception('Failed to update purchase order: ' . $e->getMessage());
+    //     }
+    // }
+
     public function updatePurchaseOrder(String $poNumber, array $data): PurchaseOrder
     {
         try {
             DB::beginTransaction();
-    
+
             $purchaseOrder = $this->getPurchaseOrderByPONumber($poNumber);
             $currentStatus = $purchaseOrder->status;
-    
+            $newStatus = $data['status'] ?? $purchaseOrder->status;
+
             // Update PO details
             $purchaseOrder->update([
                 'supplier_id' => $data['supplier_id'] ?? $purchaseOrder->supplier_id,
                 'po_date'     => $data['po_date'] ?? $purchaseOrder->po_date,
                 'remarks'     => $data['remarks'] ?? $purchaseOrder->remarks,
                 'invoice'     => $data['invoice'] ?? $purchaseOrder->invoice,
-                'status'      => $data['status'] ?? $purchaseOrder->status,
+                'status'      => $newStatus,
             ]);
-    
+
             $totalAmount = 0;
-    
+
             // Handle items only when status is PENDING
             if (isset($data['items']) && $currentStatus === PurchaseOrder::STATUS_PENDING) {
                 // When status is pending, allow updating PurchaseOrderItems
@@ -176,7 +246,7 @@ class PurchaseOrderService
                 $purchaseOrder->items()
                     ->whereNotIn('po_item_id', array_filter($newItemIds))
                     ->delete();
-    
+
                 foreach ($data['items'] as $item) {
                     if (isset($item['po_item_id'])) {
                         $poItem = PurchaseOrderItem::find($item['po_item_id']);
@@ -194,10 +264,20 @@ class PurchaseOrderService
                     $totalAmount += $existingItem->price * $existingItem->requested_quantity;
                 }
             }
-    
+
             // Update total amount
             $purchaseOrder->update(['total_amount' => $totalAmount]);
-    
+            
+            // Process inventory updates if status changed to COMPLETED
+            if ($newStatus === PurchaseOrder::STATUS_COMPLETED && $currentStatus !== PurchaseOrder::STATUS_COMPLETED) {
+                Log::info("Status", [
+                    'event' => 'Inventory update for purchase order completion',
+                    'purchase_order_id' => $newStatus ,
+                    'purchase_order_number' => $currentStatus
+                ]);
+                $this->processPurchaseOrderCompletion($purchaseOrder);
+            }
+
             DB::commit();
             return $purchaseOrder->load([
                 'supplier', 
@@ -348,5 +428,71 @@ class PurchaseOrderService
         ];
 
         return in_array($newStatus, $validTransitions[$currentStatus] ?? []);
+    }
+
+      /**
+     * Process inventory updates when a purchase order is completed
+     *
+     * @param PurchaseOrder $purchaseOrder
+     * @return bool
+     * @throws Exception
+     */
+    public function processPurchaseOrderCompletion(PurchaseOrder $purchaseOrder): bool
+    {
+        try {
+            DB::beginTransaction();
+            
+            // Verify the PO is completed
+            if ($purchaseOrder->status !== PurchaseOrder::STATUS_COMPLETED) {
+                throw new Exception('Cannot process inventory for incomplete purchase order');
+            }
+            
+            // Get all receiving reports for this PO
+            $receivingReports = ReceivingReport::where('po_id', $purchaseOrder->po_id)->get();
+            
+            if ($receivingReports->isEmpty()) {
+
+                DB::rollBack();
+                return false;
+            }
+            
+            // Track the processed items to avoid duplicates
+            $processedItems = [];
+            
+            // Process all received items across all receiving reports
+            foreach ($receivingReports as $report) {
+                foreach ($report->received_items as $item) {
+                    // Skip if we've already processed this item
+                    $itemKey = $item->product_id . '-' . ($item->attribute_id ?? 'null');
+                    if (isset($processedItems[$itemKey])) {
+                        continue;
+                    }
+                    
+                    // Update product inventory
+                    $this->productService->incrementProductQuantity(
+                        $item->product_id,
+                        $item->received_quantity,
+                        $item->cost_price
+                    );
+
+                    $item->update([
+                        'processed_for_inventory' => true,
+                        'processed_at' => now()
+                    ]);
+                    
+                    // Mark as processed to prevent duplicate inventory updates
+                    $processedItems[$itemKey] = true;
+                    
+
+                }
+            }
+            
+            DB::commit();
+            return true;
+        } catch (Exception $e) {
+            DB::rollBack();
+
+            throw $e;
+        }
     }
 }

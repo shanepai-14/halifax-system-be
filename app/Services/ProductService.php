@@ -200,29 +200,128 @@ class ProductService
     }
 
     public function uploadProductImage(string $id, UploadedFile $image): Product
-{
-    try {
-        DB::beginTransaction();
+    {
+        try {
+            DB::beginTransaction();
 
-        $product = $this->getProductById($id);
-        
-        // Delete old image if exists
-        if ($product->product_image) {
-            Storage::disk('public')->delete($product->product_image);
+            $product = $this->getProductById($id);
+            
+            // Delete old image if exists
+            if ($product->product_image) {
+                Storage::disk('public')->delete($product->product_image);
+            }
+
+            // Store with custom filename (product ID + extension)
+            $extension = $image->getClientOriginalExtension();
+            $fileName = "product_{$id}.{$extension}";
+            $path = $image->storeAs('products', $fileName, 'public');
+            
+            $product->update(['product_image' => $path]);
+
+            DB::commit();
+            return $product;
+        } catch (Exception $e) {
+            DB::rollBack();
+            throw new Exception('Failed to upload product image: ' . $e->getMessage());
         }
-
-        // Store with custom filename (product ID + extension)
-        $extension = $image->getClientOriginalExtension();
-        $fileName = "product_{$id}.{$extension}";
-        $path = $image->storeAs('products', $fileName, 'public');
-        
-        $product->update(['product_image' => $path]);
-
-        DB::commit();
-        return $product;
-    } catch (Exception $e) {
-        DB::rollBack();
-        throw new Exception('Failed to upload product image: ' . $e->getMessage());
     }
-}
+    /**
+     * Increment the quantity of a product
+     *
+     * @param int $productId
+     * @param float $quantity
+     * @param float $costPrice
+     * @return Product|null
+     */
+    public function incrementProductQuantity(
+        int $productId, 
+        float $quantity, 
+    ): ?Product {
+        $product = Product::find($productId);
+        
+        if (!$product) {
+            Log::warning("Product not found during inventory update", [
+                'product_id' => $productId
+            ]);
+            return null;
+        }
+        
+        // Increment quantity
+        $currentQuantity = $product->quantity ?? 0;
+        $product->quantity = $currentQuantity + $quantity;
+        $product->save();
+        
+        return $product;
+    }
+    
+
+    
+    /**
+     * Decrement product quantity (for sales or adjustments)
+     *
+     * @param int $productId
+     * @param float $quantity
+     * @return Product|null
+     */
+    public function decrementProductQuantity(
+        int $productId, 
+        float $quantity
+    ): ?Product {
+        $product = Product::find($productId);
+        
+        if (!$product) {
+            Log::warning("Product not found during inventory reduction", [
+                'product_id' => $productId
+            ]);
+            return null;
+        }
+        
+        // Check if we have enough inventory
+        $currentQuantity = $product->quantity ?? 0;
+        if ($currentQuantity < $quantity) {
+            Log::warning("Insufficient inventory for product", [
+                'product_id' => $productId,
+                'current_quantity' => $currentQuantity,
+                'requested_quantity' => $quantity
+            ]);
+            // You can decide whether to throw an exception or just reduce to zero
+            // For now, we'll just reduce to what we have
+            $quantity = $currentQuantity;
+        }
+        
+        // Decrement quantity
+        $product->quantity = $currentQuantity - $quantity;
+        $product->save();
+        
+        return $product;
+    }
+    
+    /**
+     * Check if a product is low on stock
+     *
+     * @param int $productId
+     * @return bool
+     */
+    public function isLowStock(int $productId): bool
+    {
+        $product = Product::find($productId);
+        
+        if (!$product || !isset($product->reorder_level)) {
+            return false;
+        }
+        
+        return ($product->quantity ?? 0) <= $product->reorder_level;
+    }
+    
+    /**
+     * Get all products that are low on stock
+     *
+     * @return \Illuminate\Database\Eloquent\Collection
+     */
+    public function getLowStockProducts()
+    {
+        return Product::whereRaw('quantity <= reorder_level')
+            ->where('reorder_level', '>', 0)
+            ->get();
+    }
 }
