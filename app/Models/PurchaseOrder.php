@@ -29,6 +29,11 @@ class PurchaseOrder extends Model
         'total_amount' => 'decimal:2'
     ];
 
+    public function receivingReports()
+    {
+        return $this->hasMany(ReceivingReport::class, 'po_id', 'po_id');
+    }
+
     // Relationship with supplier
     public function supplier()
     {
@@ -71,10 +76,7 @@ class PurchaseOrder extends Model
 
         $this->save();
     }
-    public function additionalCosts()
-    {
-        return $this->hasMany(PurchaseOrderAdditionalCost::class, 'po_id', 'po_id');
-    }
+
 
     public function calculateTotalWithCosts()
     {
@@ -89,10 +91,7 @@ class PurchaseOrder extends Model
         return $subtotal + $additionalCosts;
     }
 
-    public function received_items()
-    {
-        return $this->hasMany(PurchaseOrderReceivedItem::class, 'po_id', 'po_id');
-    }
+
 
 
 }

@@ -5,12 +5,17 @@ namespace App\Http\Controllers;
 use App\Services\PurchaseOrderService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Validation\ValidationException;
-use Illuminate\Support\Facades\Log;
+
+
 use App\Models\PurchaseOrder;
+use App\Models\ReceivingReport;
+use App\Models\PurchaseOrderReceivedItem;
+use App\Models\PurchaseOrderAdditionalCost;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\DB;
 use Exception;
 
 class PurchaseOrderController extends Controller
@@ -136,17 +141,6 @@ public function update(Request $request, string $poNumber): JsonResponse
             'items.*.received_quantity' => 'nullable|integer|min:0',
             'items.*.price' => 'required|numeric|min:0',
             'items.*.retail_price' => 'nullable|numeric|min:0',
-            'received_items' => 'nullable|array|min:0',
-            'received_items.*.po_id' => 'nullable|exists:purchase_orders,po_id',
-            'received_items.*.product_id' => 'nullable|exists:products,id',
-            'received_items.*.attribute_id' => 'nullable|exists:attributes,id',
-            'received_items.*.received_quantity' => 'nullable|numeric|min:1',
-            'received_items.*.cost_price' => 'nullable|numeric|min:0',
-            'received_items.*.walk_in_price' => 'nullable|numeric|min:0',
-            'received_items.*.term_price' => 'nullable|numeric|min:0',
-            'received_items.*.wholesale_price' => 'nullable|numeric|min:0',
-            'received_items.*.regular_price' => 'nullable|numeric|min:0',
-            'received_items.*.remarks' => 'nullable|string|max:255',
             'status' => 'required|string',
             'invoice' => 'nullable|string',
             'additional_costs' => 'nullable|array',
@@ -320,4 +314,232 @@ public function updateStatus(Request $request, String $poNumber)
             ], 500);
         }
     }
+
+    public function createReceivingReport(Request $request): ReceivingReport
+    {
+        try {
+            DB::beginTransaction();
+            
+            $poId = $request->po_id;
+            $data = $request->all();
+            
+            // Find the purchase order
+            $purchaseOrder = PurchaseOrder::findOrFail($poId);
+            
+            // Cannot create receiving report for cancelled or completed POs
+            if ($purchaseOrder->status === PurchaseOrder::STATUS_CANCELLED) {
+                throw new Exception('Cannot create receiving report for a cancelled purchase order');
+            }
+            
+            if ($purchaseOrder->status === PurchaseOrder::STATUS_COMPLETED) {
+                throw new Exception('Cannot create receiving report for a completed purchase order');
+            }
+            
+            // Create the receiving report
+            $receivingReport = new ReceivingReport([
+                'po_id' => $poId,
+                'invoice' => $data['invoice'],
+                'term' => $data['term'] ?? 0,
+            ]);
+            
+            // Let the model auto-generate batch number during save
+            $receivingReport->save();
+            
+            // Process received items
+            $totalReceivedAmount = 0;
+            Log::info($receivingReport);
+            foreach ($data['received_items'] as $itemData) {
+                $receivedItem = new PurchaseOrderReceivedItem([
+                    'rr_id' => $receivingReport->rr_id,
+                    'product_id' => $itemData['product_id'],
+                    'attribute_id' => $itemData['attribute_id'] ?? null,
+                    'received_quantity' => $itemData['received_quantity'],
+                    'cost_price' => $itemData['cost_price'],
+                    'walk_in_price' => $itemData['walk_in_price'],
+                    'term_price' => $itemData['term_price'] ?? 0,
+                    'wholesale_price' => $itemData['wholesale_price'],
+                    'regular_price' => $itemData['regular_price'],
+                    'remarks' => $itemData['remarks'] ?? null,
+                ]);
+                
+                $receivingReport->received_items()->save($receivedItem);
+                
+                $totalReceivedAmount += $receivedItem->cost_price * $receivedItem->received_quantity;
+            }
+            
+            // Process additional costs if any
+            if (!empty($data['additional_costs'])) {
+                foreach ($data['additional_costs'] as $costData) {
+                    $additionalCost = new PurchaseOrderAdditionalCost([
+                        'rr_id' => $receivingReport->rr_id,
+                        'cost_type_id' => $costData['cost_type_id'],
+                        'amount' => $costData['amount'],
+                        'remarks' => $costData['remarks'] ?? null,
+                    ]);
+                    
+                    $receivingReport->additionalCosts()->save($additionalCost);
+                }
+            }
+            
+            // Update purchase order status
+            $purchaseOrder->status = PurchaseOrder::STATUS_PARTIALLY_RECEIVED;
+            $purchaseOrder->updateStatus(); // This will set to COMPLETED if all items are fully received
+            
+            DB::commit();
+            
+            // Load relationships for the response
+            return $receivingReport->load([
+                'received_items.product',
+                'received_items.attribute',
+                'additionalCosts.costType'
+            ]);
+        } catch (Exception $e) {
+            DB::rollBack();
+            throw new Exception('Failed to create receiving report: ' . $e->getMessage());
+        }
+    }
+
+/**
+ * Update an existing receiving report
+ * 
+ * @param int $rrId The ID of the receiving report to update
+ * @param Request $request
+ * @return ReceivingReport
+ * @throws Exception
+ */
+public function updateReceivingReport(int $id, Request $request): ReceivingReport
+{
+    try {
+        DB::beginTransaction();
+        
+        $data = $request->all();
+        
+        // Find the receiving report
+        $receivingReport = ReceivingReport::with([
+            'received_items',
+            'additionalCosts'
+        ])->findOrFail($id);
+        
+        // Find the purchase order
+        $purchaseOrder = PurchaseOrder::findOrFail($receivingReport->po_id);
+        
+        // Cannot update receiving report for cancelled or completed POs
+        if ($purchaseOrder->status === PurchaseOrder::STATUS_CANCELLED) {
+            throw new Exception('Cannot update receiving report for a cancelled purchase order');
+        }
+        
+        if ($purchaseOrder->status === PurchaseOrder::STATUS_COMPLETED) {
+            throw new Exception('Cannot update receiving report for a completed purchase order');
+        }
+        
+        // Update the receiving report basic info
+        $receivingReport->update([
+            'invoice' => $data['invoice'],
+            'term' => $data['term'] ?? 0,
+        ]);
+        
+        // Track existing item IDs to determine which ones to keep, update, or delete
+        $existingItemIds = $receivingReport->received_items->pluck('received_item_id')->toArray();
+        $updatedItemIds = [];
+        
+        // Process received items - update existing or create new ones
+        foreach ($data['received_items'] as $itemData) {
+            // Check if this item has an ID (existing item)
+            if (isset($itemData['received_item_id']) && in_array($itemData['received_item_id'], $existingItemIds)) {
+                // Update existing item
+                $receivedItem = PurchaseOrderReceivedItem::findOrFail($itemData['received_item_id']);
+                $receivedItem->update([
+                    'product_id' => $itemData['product_id'],
+                    'attribute_id' => $itemData['attribute_id'] ?? null,
+                    'received_quantity' => $itemData['received_quantity'],
+                    'cost_price' => $itemData['cost_price'],
+                    'walk_in_price' => $itemData['walk_in_price'],
+                    'term_price' => $itemData['term_price'] ?? 0,
+                    'wholesale_price' => $itemData['wholesale_price'],
+                    'regular_price' => $itemData['regular_price'],
+                    'remarks' => $itemData['remarks'] ?? null,
+                ]);
+                
+                $updatedItemIds[] = $itemData['received_item_id'];
+            } else {
+                // Create new item
+                $receivedItem = new PurchaseOrderReceivedItem([
+                    'rr_id' => $receivingReport->rr_id,
+                    'product_id' => $itemData['product_id'],
+                    'attribute_id' => $itemData['attribute_id'] ?? null,
+                    'received_quantity' => $itemData['received_quantity'],
+                    'cost_price' => $itemData['cost_price'],
+                    'walk_in_price' => $itemData['walk_in_price'],
+                    'term_price' => $itemData['term_price'] ?? 0,
+                    'wholesale_price' => $itemData['wholesale_price'],
+                    'regular_price' => $itemData['regular_price'],
+                    'remarks' => $itemData['remarks'] ?? null,
+                ]);
+                
+                $receivingReport->received_items()->save($receivedItem);
+                $updatedItemIds[] = $receivedItem->received_item_id;
+            }
+        }
+        
+        // Delete items that weren't included in the update
+        $itemsToDelete = array_diff($existingItemIds, $updatedItemIds);
+        if (!empty($itemsToDelete)) {
+            PurchaseOrderReceivedItem::whereIn('received_item_id', $itemsToDelete)->delete();
+        }
+        
+        // Track existing additional cost IDs
+        $existingCostIds = $receivingReport->additionalCosts->pluck('additional_cost_id')->toArray();
+        $updatedCostIds = [];
+        
+        // Process additional costs - update existing or create new ones
+        if (!empty($data['additional_costs'])) {
+            foreach ($data['additional_costs'] as $costData) {
+                // Check if this cost has an ID (existing cost)
+                if (isset($costData['additional_cost_id']) && in_array($costData['additional_cost_id'], $existingCostIds)) {
+                    // Update existing cost
+                    $additionalCost = PurchaseOrderAdditionalCost::findOrFail($costData['additional_cost_id']);
+                    $additionalCost->update([
+                        'cost_type_id' => $costData['cost_type_id'],
+                        'amount' => $costData['amount'],
+                        'remarks' => $costData['remarks'] ?? null,
+                    ]);
+                    
+                    $updatedCostIds[] = $costData['additional_cost_id'];
+                } else {
+                    // Create new cost
+                    $additionalCost = new PurchaseOrderAdditionalCost([
+                        'rr_id' => $receivingReport->rr_id,
+                        'cost_type_id' => $costData['cost_type_id'],
+                        'amount' => $costData['amount'],
+                        'remarks' => $costData['remarks'] ?? null,
+                    ]);
+                    
+                    $receivingReport->additionalCosts()->save($additionalCost);
+                    $updatedCostIds[] = $additionalCost->additional_cost_id;
+                }
+            }
+        }
+        
+        // Delete costs that weren't included in the update
+        $costsToDelete = array_diff($existingCostIds, $updatedCostIds);
+        if (!empty($costsToDelete)) {
+            PurchaseOrderAdditionalCost::whereIn('additional_cost_id', $costsToDelete)->delete();
+        }
+        
+        // Update purchase order status - might need to recalculate based on all receiving reports
+        $purchaseOrder->updateStatus(); // This will set to COMPLETED if all items are fully received or keep as PARTIALLY_RECEIVED
+        
+        DB::commit();
+        
+        // Load relationships for the response
+        return $receivingReport->load([
+            'received_items.product',
+            'received_items.attribute',
+            'additionalCosts.costType'
+        ]);
+    } catch (Exception $e) {
+        DB::rollBack();
+        throw new Exception('Failed to update receiving report: ' . $e->getMessage());
+    }
+}
 }

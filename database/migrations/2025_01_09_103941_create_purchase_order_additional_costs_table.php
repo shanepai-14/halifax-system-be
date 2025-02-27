@@ -13,15 +13,15 @@ return new class extends Migration
     {
         Schema::create('purchase_order_additional_costs', function (Blueprint $table) {
             $table->id('po_cost_id');
-            $table->unsignedBigInteger('po_id');
+            $table->unsignedBigInteger('rr_id');
             $table->unsignedBigInteger('cost_type_id');
             $table->decimal('amount', 15, 2);
             $table->text('remarks')->nullable();
             $table->timestamps();
 
-            $table->foreign('po_id')
-                ->references('po_id')
-                ->on('purchase_orders')
+            $table->foreign('rr_id')
+                ->references('rr_id')
+                ->on('receiving_reports')
                 ->onDelete('cascade');
 
             $table->foreign('cost_type_id')

@@ -13,7 +13,7 @@ class PurchaseOrderReceivedItem extends Model
     protected $primaryKey = 'received_item_id';
 
     protected $fillable = [
-        'po_id',
+        'rr_id',
         'product_id',
         'attribute_id',
         'received_quantity',
@@ -43,7 +43,7 @@ class PurchaseOrderReceivedItem extends Model
     // Relationship with purchase order
     public function purchaseOrder()
     {
-        return $this->belongsTo(PurchaseOrder::class, 'po_id', 'po_id');
+        return $this->belongsTo(ReceivingReport::class, 'rr_id', 'rr_id');
     }
 
     // Relationship with product

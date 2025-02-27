@@ -82,7 +82,7 @@ class PurchaseOrderService
                 'status' => PurchaseOrder::STATUS_PENDING,
                 'remarks' => $data['remarks'] ?? null,
                 'attachment' => $data['attachment'] ?? null,
-                'total_amount' => 0, // Will be calculated from items and additional costs
+                'total_amount' => 0, // Will be calculated from items
             ]);
     
             // Create PO items
@@ -98,30 +98,16 @@ class PurchaseOrderService
                 $totalAmount += $poItem->price * $poItem->requested_quantity;
             }
     
-            // Create additional costs if any
-            $additionalCostsTotal = 0;
-            if (!empty($data['additional_costs'])) {
-                foreach ($data['additional_costs'] as $cost) {
-                    $purchaseOrder->additionalCosts()->create([
-                        'cost_type_id' => $cost['cost_type_id'],
-                        'amount' => $cost['amount'],
-                        'remarks' => $cost['remarks'] ?? null
-                    ]);
-                    $additionalCostsTotal += $cost['amount'];
-                }
-            }
-    
-            // Update total amount including additional costs
-            $purchaseOrder->update(['total_amount' => $totalAmount + $additionalCostsTotal]);
+            // Update total amount from items only
+            $purchaseOrder->update(['total_amount' => $totalAmount]);
     
             DB::commit();
-            return $purchaseOrder->load(['supplier', 'items.product', 'additionalCosts.costType']);
+            return $purchaseOrder->load(['supplier', 'items.product']);
         } catch (Exception $e) {
             DB::rollBack();
             throw new Exception('Failed to create purchase order: ' . $e->getMessage());
         }
     }
-
     /**
      * Get purchase order by ID
      */
@@ -136,7 +122,7 @@ class PurchaseOrderService
      * @return PurchaseOrder
      * @throws ModelNotFoundException If purchase order not found
      */
-    public function getPurchaseOrderByPONumber(String $poNumber): PurchaseOrder 
+    public function getPurchaseOrderByPONumber(String $poNumber): PurchaseOrder
     {
         if (empty($poNumber)) {
             throw new InvalidArgumentException('PO number cannot be empty');
@@ -147,14 +133,19 @@ class PurchaseOrderService
                 'supplier',
                 'items.product',
                 'items.attribute',
-                'additionalCosts.costType',
-                'received_items.product',
-                'received_items.attribute',
-                'attachments'  // Added this line
+                'attachments',
+                'receivingReports' => function ($query) {
+                    $query->with([
+                        'received_items.product',
+                        'received_items.attribute',
+                        'additionalCosts.costType'
+                    ]);
+                }
             ])
             ->where('po_number', $poNumber)
             ->firstOrFail();
     }
+    
 
     /**
      * Update purchase order
@@ -178,115 +169,39 @@ class PurchaseOrderService
     
             $totalAmount = 0;
     
-            // Handle items based on status
-            if (isset($data['items'])) {
-                if ($currentStatus === PurchaseOrder::STATUS_PENDING) {
-                    // When status is pending, allow updating PurchaseOrderItems
-                    $newItemIds = array_column($data['items'], 'po_item_id');
-                    $purchaseOrder->items()
-                        ->whereNotIn('po_item_id', array_filter($newItemIds))
-                        ->delete();
-    
-                    foreach ($data['items'] as $item) {
-                        if (isset($item['po_item_id'])) {
-                            $poItem = PurchaseOrderItem::find($item['po_item_id']);
-                            if ($poItem) {
-                                $poItem->update($item);
-                            }
-                        } else {
-                            $poItem = $purchaseOrder->items()->create($item);
-                        }
-                        $totalAmount += $poItem->price * $poItem->requested_quantity;
-                    }
-                } elseif ($currentStatus === PurchaseOrder::STATUS_PARTIALLY_RECEIVED) {
-
-                    $newReceivedItemIds = array_column(
-                        array_filter($data['received_items'], function($item) {
-                            return isset($item['received_item_id']);
-                        }), 
-                        'received_item_id'
-                    );
-                
-                    // Delete received items that are not in the new data
-                    $purchaseOrder->received_items()
-                        ->whereNotIn('received_item_id', array_filter($newReceivedItemIds))
-                        ->delete();
-                
-                    foreach ($data['received_items'] as $item) {
-                        if (isset($item['received_item_id'])) {
-                            // Update existing received item
-                            $receivedItem = PurchaseOrderReceivedItem::find($item['received_item_id']);
-                            if ($receivedItem) {
-                                $receivedItem->update([
-                                    'received_quantity' => $item['received_quantity'],
-                                    'cost_price' => $item['cost_price'],
-                                    'walk_in_price' => $item['walk_in_price'] ?? null,
-                                    'term_price' => $item['term_price'] ?? null,
-                                    'wholesale_price' => $item['wholesale_price'] ?? null,
-                                    'regular_price' => $item['regular_price'] ?? null,
-                                    'remarks' => $item['remarks'] ?? null
-                                ]);
-                            }
-                        } else {
-                            // Create new received item
-                            $receivedItem = $purchaseOrder->received_items()->create([
-                                'product_id' => $item['product_id'],
-                                'attribute_id' => $item['attribute_id'],
-                                'received_quantity' => $item['received_quantity'],
-                                'cost_price' => $item['cost_price'],
-                                'walk_in_price' => $item['walk_in_price'] ?? null,
-                                'term_price' => $item['term_price'] ?? null,
-                                'wholesale_price' => $item['wholesale_price'] ?? null,
-                                'regular_price' => $item['regular_price'] ?? null,
-                                'remarks' => $item['remarks'] ?? null
-                            ]);
-                        }
-                
-                        // Update the total amount
-                      $totalAmount += $receivedItem->cost_price * $receivedItem->received_quantity;
-    }
-                }
-            }
-    
-            // Handle additional costs
-            $additionalCostsTotal = 0;
-            if (isset($data['additional_costs'])) {
-                // Delete costs not in new data
-                $newCostIds = array_column($data['additional_costs'], 'po_cost_id');
-                $purchaseOrder->additionalCosts()
-                    ->whereNotIn('po_cost_id', array_filter($newCostIds))
+            // Handle items only when status is PENDING
+            if (isset($data['items']) && $currentStatus === PurchaseOrder::STATUS_PENDING) {
+                // When status is pending, allow updating PurchaseOrderItems
+                $newItemIds = array_column($data['items'], 'po_item_id');
+                $purchaseOrder->items()
+                    ->whereNotIn('po_item_id', array_filter($newItemIds))
                     ->delete();
     
-                foreach ($data['additional_costs'] as $cost) {
-                    if (isset($cost['po_cost_id'])) {
-                        $poCost = $purchaseOrder->additionalCosts()->find($cost['po_cost_id']);
-                        if ($poCost) {
-                            $poCost->update([
-                                'amount' => $cost['amount'],
-                                'remarks' => $cost['remarks'] ?? null
-                            ]);
+                foreach ($data['items'] as $item) {
+                    if (isset($item['po_item_id'])) {
+                        $poItem = PurchaseOrderItem::find($item['po_item_id']);
+                        if ($poItem) {
+                            $poItem->update($item);
                         }
                     } else {
-                        $poCost = $purchaseOrder->additionalCosts()->create([
-                            'cost_type_id' => $cost['cost_type_id'],
-                            'amount' => $cost['amount'],
-                            'remarks' => $cost['remarks'] ?? null
-                        ]);
+                        $poItem = $purchaseOrder->items()->create($item);
                     }
-                    $additionalCostsTotal += $poCost->amount;
+                    $totalAmount += $poItem->price * $poItem->requested_quantity;
+                }
+            } else {
+                // Calculate total amount from existing items if not updating items
+                foreach ($purchaseOrder->items as $existingItem) {
+                    $totalAmount += $existingItem->price * $existingItem->requested_quantity;
                 }
             }
     
             // Update total amount
-            $purchaseOrder->update(['total_amount' => $totalAmount + $additionalCostsTotal]);
+            $purchaseOrder->update(['total_amount' => $totalAmount]);
     
             DB::commit();
             return $purchaseOrder->load([
                 'supplier', 
-                'items.product', 
-                'additionalCosts.costType',
-                'received_items.product',
-                'received_items.attribute'
+                'items.product'
             ]);
         } catch (Exception $e) {
             DB::rollBack();

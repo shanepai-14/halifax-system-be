@@ -50,8 +50,12 @@ Route::post('/login', [AuthController::class, 'login']);
                 Route::put('/{id}/cancel', [PurchaseOrderController::class, 'cancel']);
                 Route::post('/{poNumber}/attachment', [PurchaseOrderController::class, 'uploadAttachment']);
                 Route::put('/{poNumber}/status', [PurchaseOrderController::class, 'updateStatus']);
+                Route::post('/receiving-reports', [PurchaseOrderController::class, 'createReceivingReport']);
+                Route::put('/{id}/receiving-reports', [PurchaseOrderController::class, 'updateReceivingReport']);
                 Route::post('/{poNumber}/attachments', [AttachmentController::class, 'uploadPOAttachment']);
                 Route::get('/{poNumber}/attachments', [AttachmentController::class, 'getPOAttachments']);
+
+                
             });
 
              Route::post('attachments/{attachmentId}', [AttachmentController::class, 'deleteAttachment']);

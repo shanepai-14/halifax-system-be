@@ -13,7 +13,7 @@ return new class extends Migration
     {
         Schema::create('purchase_order_received_items', function (Blueprint $table) {
             $table->id('received_item_id');
-            $table->unsignedBigInteger('po_id');
+            $table->unsignedBigInteger('rr_id')->nullable();
             $table->foreignId('product_id'); 
             $table->unsignedBigInteger('attribute_id')->nullable();
             $table->decimal('received_quantity', 15, 2);

@@ -12,7 +12,7 @@ class PurchaseOrderAdditionalCost extends Model
     protected $primaryKey = 'po_cost_id';
 
     protected $fillable = [
-        'po_id',
+        'rr_id',
         'cost_type_id',
         'amount',
         'remarks'
@@ -24,7 +24,7 @@ class PurchaseOrderAdditionalCost extends Model
 
     public function purchaseOrder()
     {
-        return $this->belongsTo(PurchaseOrder::class, 'po_id', 'po_id');
+        return $this->belongsTo(ReceivingReport::class, 'rr_id', 'rr_id');
     }
 
     public function costType()
