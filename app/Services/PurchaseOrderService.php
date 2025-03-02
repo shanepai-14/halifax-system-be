@@ -148,7 +148,8 @@ class PurchaseOrderService
                     $query->with([
                         'received_items.product',
                         'received_items.attribute',
-                        'additionalCosts.costType'
+                        'additionalCosts.costType',
+                        'attachments'
                     ]);
                 }
             ])

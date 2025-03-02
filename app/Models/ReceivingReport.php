@@ -4,10 +4,11 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use App\Traits\HasAttachments;
 
 class ReceivingReport extends Model
 {
-    use HasFactory;
+    use HasFactory, HasAttachments;
 
     /**
      * The table associated with the model.
@@ -27,6 +28,8 @@ class ReceivingReport extends Model
         'invoice',
         'batch_number',
         'term',
+        'is_paid',
+        'attachment'
     ];
 
     /**

@@ -58,6 +58,10 @@ Route::post('/login', [AuthController::class, 'login']);
                 
             });
 
+            Route::prefix('receiving-reports')->group(function () {
+            Route::post('/{rr_id}/attachments', [AttachmentController::class, 'uploadRRAttachment']);
+            });
+
              Route::post('attachments/{attachmentId}', [AttachmentController::class, 'deleteAttachment']);
 
              Route::get('storage/{path}', function($path) {

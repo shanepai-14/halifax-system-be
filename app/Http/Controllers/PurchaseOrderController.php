@@ -428,9 +428,9 @@ public function updateReceivingReport(int $id, Request $request): ReceivingRepor
             throw new Exception('Cannot update receiving report for a cancelled purchase order');
         }
         
-        if ($purchaseOrder->status === PurchaseOrder::STATUS_COMPLETED) {
-            throw new Exception('Cannot update receiving report for a completed purchase order');
-        }
+        // if ($purchaseOrder->status === PurchaseOrder::STATUS_COMPLETED) {
+        //     throw new Exception('Cannot update receiving report for a completed purchase order');
+        // }
         
         // Update the receiving report basic info
         $receivingReport->update([
