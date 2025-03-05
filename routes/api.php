@@ -12,6 +12,8 @@ use App\Http\Controllers\PurchaseOrderAdditionalCostController;
 use App\Http\Controllers\AdditionalCostTypeController;
 use App\Http\Controllers\AttachmentController;
 use App\Http\Controllers\ReceivingReportController;
+use App\Http\Controllers\InventoryController;
+use App\Http\Controllers\InventoryCountController;
 
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
@@ -67,6 +69,37 @@ Route::post('/login', [AuthController::class, 'login']);
                 Route::put('/{id}/payment-status', [ReceivingReportController::class, 'updatePaymentStatus']);
                 Route::delete('/{id}', [ReceivingReportController::class, 'destroy']);
                 Route::post('/{rr_id}/attachments', [AttachmentController::class, 'uploadRRAttachment']);
+            });
+
+            Route::prefix('inventory')->group(function () {
+                // Main inventory routes
+                Route::get('/', [InventoryController::class, 'index']);
+                Route::get('/product/{productId}', [InventoryController::class, 'show']);
+                
+                // Adjustments
+                Route::post('/adjustments', [InventoryController::class, 'createAdjustment']);
+                Route::get('/adjustments', [InventoryController::class, 'getAdjustments']);
+                Route::get('/adjustments/product/{productId}', [InventoryController::class, 'getProductAdjustments']);
+                
+                // Logs
+                Route::get('/logs', [InventoryController::class, 'getLogs']);
+                Route::get('/logs/product/{productId}', [InventoryController::class, 'getProductLogs']);
+                
+                // Transactions
+                Route::get('/transactions/product/{productId}', [InventoryController::class, 'getProductTransactions']);
+                
+                // Warnings
+                Route::get('/warnings', [InventoryController::class, 'getWarnings']);
+                
+                // Inventory counts
+                Route::prefix('counts')->group(function () {
+                    Route::get('/', [InventoryCountController::class, 'index']);
+                    Route::post('/', [InventoryCountController::class, 'store']);
+                    Route::get('/{id}', [InventoryCountController::class, 'show']);
+                    Route::put('/{id}', [InventoryCountController::class, 'update']);
+                    Route::post('/{id}/finalize', [InventoryCountController::class, 'finalize']);
+                    Route::post('/{id}/cancel', [InventoryCountController::class, 'cancel']);
+                });
             });
 
              Route::post('attachments/{attachmentId}', [AttachmentController::class, 'deleteAttachment']);
