@@ -44,14 +44,14 @@ class ReceivingReportController extends Controller
             }
 
             // Filter by supplier
-            if ($request->has('supplier_id')) {
+            if ($request->has('supplier_id') && $request->supplier_id != "All") {
                 $query->whereHas('purchaseOrder', function ($poQuery) use ($request) {
                     $poQuery->where('supplier_id', $request->supplier_id);
                 });
             }
 
             // Filter by payment status
-            if ($request->has('is_paid')) {
+            if ($request->has('is_paid') && $request->is_paid != "All") {
                 $query->where('is_paid', $request->is_paid === 'true' || $request->is_paid === '1');
             }
 
@@ -64,7 +64,6 @@ class ReceivingReportController extends Controller
             $perPage = $request->per_page ?? 10;
             $reports = $query->paginate($perPage);
 
-            // Transform the data to include purchase order details
             $transformedReports = $reports->getCollection()->map(function ($report) {
                 $totalItems = $report->received_items->sum(function ($item) {
                     return $item->received_quantity * $item->cost_price;
