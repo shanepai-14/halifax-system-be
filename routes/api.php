@@ -11,6 +11,7 @@ use App\Http\Controllers\PurchaseOrderController;
 use App\Http\Controllers\PurchaseOrderAdditionalCostController;
 use App\Http\Controllers\AdditionalCostTypeController;
 use App\Http\Controllers\AttachmentController;
+use App\Http\Controllers\ReceivingReportController;
 
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
@@ -59,7 +60,13 @@ Route::post('/login', [AuthController::class, 'login']);
             });
 
             Route::prefix('receiving-reports')->group(function () {
-            Route::post('/{rr_id}/attachments', [AttachmentController::class, 'uploadRRAttachment']);
+                Route::get('/', [ReceivingReportController::class, 'index']);
+                Route::get('/stats', [ReceivingReportController::class, 'getStats']);
+                Route::get('/{id}', [ReceivingReportController::class, 'show']);
+                Route::put('/{id}', [ReceivingReportController::class, 'update']);
+                Route::put('/{id}/payment-status', [ReceivingReportController::class, 'updatePaymentStatus']);
+                Route::delete('/{id}', [ReceivingReportController::class, 'destroy']);
+                Route::post('/{rr_id}/attachments', [AttachmentController::class, 'uploadRRAttachment']);
             });
 
              Route::post('attachments/{attachmentId}', [AttachmentController::class, 'deleteAttachment']);
