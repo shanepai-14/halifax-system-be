@@ -436,6 +436,7 @@ public function updateReceivingReport(int $id, Request $request): ReceivingRepor
         $receivingReport->update([
             'invoice' => $data['invoice'],
             'term' => $data['term'] ?? 0,
+            'is_paid' => $data['is_paid'] ?? false,
         ]);
         
         // Track existing item IDs to determine which ones to keep, update, or delete
