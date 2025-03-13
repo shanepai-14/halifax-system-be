@@ -14,6 +14,8 @@ use App\Http\Controllers\AttachmentController;
 use App\Http\Controllers\ReceivingReportController;
 use App\Http\Controllers\InventoryController;
 use App\Http\Controllers\InventoryCountController;
+use App\Http\Controllers\ProductPriceController;
+
 
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
@@ -41,6 +43,22 @@ Route::post('/login', [AuthController::class, 'login']);
                 Route::put('/{id}', [SupplierController::class, 'update']);
                 Route::delete('/{id}', [SupplierController::class, 'destroy']);
                 Route::post('/{id}/restore', [SupplierController::class, 'restore']);
+            });
+
+            Route::prefix('product-prices')->group(function () {
+                Route::get('/', [ProductPriceController::class, 'index']);
+                Route::post('/', [ProductPriceController::class, 'store']);
+                Route::get('/stats', [ProductPriceController::class, 'getStats']);
+                Route::get('/trashed', [ProductPriceController::class, 'trashed']);
+                Route::get('/by-product/{productId}', [ProductPriceController::class, 'priceHistory']);
+                Route::get('/current/{productId}', [ProductPriceController::class, 'getCurrentPrice']);
+                Route::post('/update-from-po/{productId}', [ProductPriceController::class, 'updateFromPurchaseOrder']);
+                Route::post('/bulk-update', [ProductPriceController::class, 'bulkUpdate']);
+                Route::get('/{id}', [ProductPriceController::class, 'show']);
+                Route::put('/{id}', [ProductPriceController::class, 'update']);
+                Route::post('/{id}/set-active', [ProductPriceController::class, 'setActive']);
+                Route::delete('/{id}', [ProductPriceController::class, 'destroy']);
+                Route::post('/{id}/restore', [ProductPriceController::class, 'restore']);
             });
 
             Route::prefix('purchase-orders')->group(function () {

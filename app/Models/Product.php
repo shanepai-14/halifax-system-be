@@ -92,4 +92,48 @@ class Product extends Model
    {
        return $this->inventory ? $this->inventory->quantity <= 0 : true;
    }
+
+   public function prices()
+    {
+        return $this->hasMany(ProductPrice::class);
+    }
+
+    public function currentPrice()
+    {
+        return $this->hasOne(ProductPrice::class)->active()->latest();
+    }
+
+    public function getCurrentPricesAttribute()
+    {
+        $price = $this->currentPrice;
+        if (!$price) {
+            return [
+                'regular_price' => 0,
+                'wholesale_price' => 0,
+                'walk_in_price' => 0,
+                'cost_price' => 0
+            ];
+        }
+        return $price;
+    }
+
+    public function getRegularPriceAttribute()
+    {
+        return $this->currentPrice ? $this->currentPrice->regular_price : 0;
+    }
+
+    public function getWholesalePriceAttribute()
+    {
+        return $this->currentPrice ? $this->currentPrice->wholesale_price : 0;
+    }
+
+    public function getWalkInPriceAttribute()
+    {
+        return $this->currentPrice ? $this->currentPrice->walk_in_price : 0;
+    }
+
+    public function getCostPriceAttribute()
+    {
+        return $this->currentPrice ? $this->currentPrice->cost_price : 0;
+    }
 }
