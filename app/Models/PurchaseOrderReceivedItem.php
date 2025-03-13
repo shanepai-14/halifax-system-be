@@ -18,6 +18,7 @@ class PurchaseOrderReceivedItem extends Model
         'attribute_id',
         'received_quantity',
         'cost_price',
+        'distribution_price',
         'walk_in_price',
         'term_price',
         'wholesale_price',
@@ -44,6 +45,11 @@ class PurchaseOrderReceivedItem extends Model
 
     // Relationship with purchase order
     public function purchaseOrder()
+    {
+        return $this->belongsTo(ReceivingReport::class, 'rr_id', 'rr_id');
+    }
+
+    public function receivingReport()
     {
         return $this->belongsTo(ReceivingReport::class, 'rr_id', 'rr_id');
     }

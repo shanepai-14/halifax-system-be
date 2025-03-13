@@ -444,11 +444,13 @@ public function updateStatus(Request $request, String $poNumber)
                 'attribute_id' => $itemData['attribute_id'] ?? null,
                 'received_quantity' => $itemData['received_quantity'],
                 'cost_price' => $itemData['cost_price'],
+                'distribution_price' => $itemData['distribution_price'],
                 'walk_in_price' => $itemData['walk_in_price'],
                 'term_price' => $itemData['term_price'] ?? 0,
                 'wholesale_price' => $itemData['wholesale_price'],
                 'regular_price' => $itemData['regular_price'],
                 'remarks' => $itemData['remarks'] ?? null,
+                
             ]);
             
             $receivingReport->received_items()->save($receivedItem);
@@ -629,6 +631,7 @@ public function updateReceivingReport(int $id, Request $request): ReceivingRepor
                     'attribute_id' => $itemData['attribute_id'] ?? null,
                     'received_quantity' => $itemData['received_quantity'],
                     'cost_price' => $itemData['cost_price'],
+                    'distribution_price' => $itemData['distribution_price'],
                     'walk_in_price' => $itemData['walk_in_price'],
                     'term_price' => $itemData['term_price'] ?? 0,
                     'wholesale_price' => $itemData['wholesale_price'],

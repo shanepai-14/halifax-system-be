@@ -7,7 +7,7 @@ use App\Models\InventoryLog;
 use App\Models\InventoryAdjustment;
 use App\Models\Product;
 use App\Models\InventoryCount;
-use App\Models\InventoryCountItem;
+use App\Models\PurchaseOrderReceivedItem;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Collection;
@@ -288,6 +288,48 @@ class InventoryService
             ->where('product_id', $productId)
             ->orderBy('created_at', 'desc')
             ->get();
+    }
+
+    public static function getReceivingReportsForProduct($productId) : Collection
+    {
+        return PurchaseOrderReceivedItem::where('product_id', $productId)
+            ->with([
+                'purchaseOrder',
+                'purchaseOrder.purchaseOrder',
+                'purchaseOrder.purchaseOrder.supplier'
+            ])
+            ->get()
+            ->map(function ($receivedItem) {
+                // Check if relationships exist before accessing their properties
+                $purchaseOrder = $receivedItem->purchaseOrder;
+                
+                if (!$purchaseOrder) {
+                    return [
+                        'batch_number' => 'N/A',
+                        'invoice' => 'N/A',
+                        'quantity_received' => $receivedItem->received_quantity,
+                        'payment_status' => 'N/A',
+                        'supplier' => 'N/A',
+                        'distribution_price' => $receivedItem->distribution_price,
+                        'received_at' => $receivedItem->created_at ? $receivedItem->created_at->format('Y-m-d') : 'N/A',
+                        'received_item_id' => $receivedItem->received_item_id
+                    ];
+                }
+                
+                $po = $purchaseOrder->purchaseOrder;
+                $supplier = $po && $po->supplier ? $po->supplier->supplier_name: 'N/A';
+                
+                return [
+                    'batch_number' => $purchaseOrder->batch_number ?? 'N/A',
+                    'invoice' => $purchaseOrder->invoice ?? 'N/A',
+                    'quantity_received' => $receivedItem->received_quantity,
+                    'payment_status' => isset($purchaseOrder->is_paid) ? ($purchaseOrder->is_paid ? 'Paid' : 'Unpaid') : 'N/A',
+                    'supplier' => $supplier,
+                    'distribution_price' => $receivedItem->distribution_price,
+                    'received_at' => $purchaseOrder->created_at ? $purchaseOrder->created_at->format('Y-m-d') : 'N/A',
+                    'received_item_id' => $receivedItem->received_item_id
+                ];
+            });
     }
     
     /**

@@ -87,11 +87,9 @@ Route::post('/login', [AuthController::class, 'login']);
                 
                 // Transactions
                 Route::get('/transactions/product/{productId}', [InventoryController::class, 'getProductTransactions']);
+                Route::get('/report/product/{productId}', [InventoryController::class, 'getProductReport']);
                 
-                // Warnings
                 Route::get('/warnings', [InventoryController::class, 'getWarnings']);
-                
-                // Inventory counts
                 Route::prefix('counts')->group(function () {
                     Route::get('/', [InventoryCountController::class, 'index']);
                     Route::post('/', [InventoryCountController::class, 'store']);

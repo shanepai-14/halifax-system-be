@@ -257,6 +257,27 @@ class InventoryController extends Controller
         }
     }
 
+    public function getProductReport(int $productId): JsonResponse
+    {
+        $productId = (int)$productId;
+        
+        try {
+            $transactions = $this->inventoryService->getReceivingReportsForProduct($productId);
+
+            return response()->json([
+                'status' => 'success',
+                'data' => $transactions,
+                'message' => 'Product report retrieved successfully'
+            ]);
+        } catch (Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Error retrieving product report',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
     /**
      * Get inventory warnings
      *
