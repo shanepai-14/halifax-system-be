@@ -15,6 +15,9 @@ use App\Http\Controllers\ReceivingReportController;
 use App\Http\Controllers\InventoryController;
 use App\Http\Controllers\InventoryCountController;
 use App\Http\Controllers\ProductPriceController;
+use App\Http\Controllers\CustomerController;
+
+
 
 
 Route::post('/register', [AuthController::class, 'register']);
@@ -116,6 +119,17 @@ Route::post('/login', [AuthController::class, 'login']);
                     Route::post('/{id}/finalize', [InventoryCountController::class, 'finalize']);
                     Route::post('/{id}/cancel', [InventoryCountController::class, 'cancel']);
                 });
+            });
+
+            Route::prefix('customers')->group(function () {
+                Route::get('/', [CustomerController::class, 'index']);
+                Route::post('/', [CustomerController::class, 'store']);
+                Route::get('/stats', [CustomerController::class, 'getStats']);
+                Route::get('/trashed', [CustomerController::class, 'trashed']);
+                Route::get('/{id}', [CustomerController::class, 'show']);
+                Route::put('/{id}', [CustomerController::class, 'update']);
+                Route::delete('/{id}', [CustomerController::class, 'destroy']);
+                Route::post('/{id}/restore', [CustomerController::class, 'restore']);
             });
 
              Route::post('attachments/{attachmentId}', [AttachmentController::class, 'deleteAttachment']);
