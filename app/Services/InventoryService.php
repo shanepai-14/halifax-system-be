@@ -65,6 +65,74 @@ class InventoryService
         return $query->get();
     }
     
+    public function getAllInventorySales(): Collection
+    {
+        $query = Inventory::with([
+            'product.category',
+            'product.currentPrice', // Load the active/current price relation
+        ]);
+
+        // Get all inventory data with their products
+        $inventories = $query->get();
+
+        // Process each inventory item to format with required pricing data
+        return $inventories->map(function ($inventory) {
+            $product = $inventory->product;
+            
+
+            $receivedItem = PurchaseOrderReceivedItem::where('product_id', $product->id)
+                ->orderBy('created_at', 'desc')
+                ->first();
+                
+            // Set default prices
+            $prices = [
+                'distribution_price' => $receivedItem ? $receivedItem->distribution_price : 0,
+                'cost_price' => $receivedItem ? $receivedItem->cost_price : 0,
+                'walk_in_price' => 0,
+                'wholesale_price' => 0,
+                'regular_price' => 0
+            ];
+            
+            // If product has current price, use it for retail prices
+            if ($product->currentPrice) {
+                $prices['walk_in_price'] = $product->currentPrice->walk_in_price;
+                $prices['wholesale_price'] = $product->currentPrice->wholesale_price;
+                $prices['regular_price'] = $product->currentPrice->regular_price;
+            } else if ($receivedItem) {
+                // Otherwise, use received item prices
+                $prices['walk_in_price'] = $receivedItem->walk_in_price;
+                $prices['wholesale_price'] = $receivedItem->wholesale_price;
+                $prices['regular_price'] = $receivedItem->regular_price;
+            }
+
+            // Add computed status field
+            $status = 'normal';
+            if ($product->reorder_level > 0) {
+                if ($inventory->quantity <= $product->reorder_level) {
+                    $status = 'low';
+                } elseif ($inventory->quantity > ($product->reorder_level * 3)) {
+                    $status = 'overstocked';
+                }
+            }
+
+            // Format inventory data as requested
+            return [
+                'id' => $product->id,
+                'code' => $product->product_code,
+                'name' => $product->product_name,
+                'distribution_price' => $prices['distribution_price'],
+                'cost_price' => $prices['cost_price'],
+                'walk_in_price' => $prices['walk_in_price'],
+                'wholesale_price' => $prices['wholesale_price'],
+                'regular_price' => $prices['regular_price'],
+                'quantity' => (int) $inventory->quantity,
+                'category' => $product->category ? $product->category->name : 'Uncategorized',
+                'product_image' => $product->product_image,
+                'status' => $status,
+                'reorder_level' => $product->reorder_level
+            ];
+        });
+    }
 
     public function getProductInventory(int $productId): ?Inventory
     {

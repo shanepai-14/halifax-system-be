@@ -93,24 +93,18 @@ Route::post('/login', [AuthController::class, 'login']);
             });
 
             Route::prefix('inventory')->group(function () {
-                // Main inventory routes
                 Route::get('/', [InventoryController::class, 'index']);
+                Route::get('/sales', [InventoryController::class, 'salesInventory']);
                 Route::get('/product/{productId}', [InventoryController::class, 'show']);
-                
-                // Adjustments
                 Route::post('/adjustments', [InventoryController::class, 'createAdjustment']);
                 Route::get('/adjustments', [InventoryController::class, 'getAdjustments']);
                 Route::get('/adjustments/product/{productId}', [InventoryController::class, 'getProductAdjustments']);
-                
-                // Logs
                 Route::get('/logs', [InventoryController::class, 'getLogs']);
                 Route::get('/logs/product/{productId}', [InventoryController::class, 'getProductLogs']);
-                
-                // Transactions
                 Route::get('/transactions/product/{productId}', [InventoryController::class, 'getProductTransactions']);
                 Route::get('/report/product/{productId}', [InventoryController::class, 'getProductReport']);
-                
                 Route::get('/warnings', [InventoryController::class, 'getWarnings']);
+
                 Route::prefix('counts')->group(function () {
                     Route::get('/', [InventoryCountController::class, 'index']);
                     Route::post('/', [InventoryCountController::class, 'store']);
@@ -119,6 +113,7 @@ Route::post('/login', [AuthController::class, 'login']);
                     Route::post('/{id}/finalize', [InventoryCountController::class, 'finalize']);
                     Route::post('/{id}/cancel', [InventoryCountController::class, 'cancel']);
                 });
+
             });
 
             Route::prefix('customers')->group(function () {

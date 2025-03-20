@@ -47,6 +47,27 @@ class InventoryController extends Controller
         }
     }
 
+    public function salesInventory(Request $request): JsonResponse
+    {
+        try {
+           
+            $inventory = $this->inventoryService->getAllInventorySales();
+
+            return response()->json([
+                'status' => 'success',
+                'data' => $inventory,
+                'message' => 'Inventory data retrieved successfully'
+            ]);
+        } catch (Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Error retrieving inventory data',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+
     public function show( $productId ): JsonResponse
     {
 
