@@ -16,6 +16,10 @@ use App\Http\Controllers\InventoryController;
 use App\Http\Controllers\InventoryCountController;
 use App\Http\Controllers\ProductPriceController;
 use App\Http\Controllers\CustomerController;
+use App\Http\Controllers\SaleController;
+use App\Http\Controllers\SaleReturnController;
+
+
 
 
 
@@ -125,6 +129,32 @@ Route::post('/login', [AuthController::class, 'login']);
                 Route::put('/{id}', [CustomerController::class, 'update']);
                 Route::delete('/{id}', [CustomerController::class, 'destroy']);
                 Route::post('/{id}/restore', [CustomerController::class, 'restore']);
+            });
+
+
+            Route::prefix('sales')->group(function () {
+                Route::get('/', [SaleController::class, 'index']);
+                Route::post('/', [SaleController::class, 'store']);
+                Route::get('/stats', [SaleController::class, 'getStats']);
+                Route::get('/invoice/{invoiceNumber}', [SaleController::class, 'getByInvoiceNumber']);
+                Route::get('/{id}', [SaleController::class, 'show']);
+                Route::put('/{id}', [SaleController::class, 'update']);
+                Route::put('/{id}/payment', [SaleController::class, 'updatePayment']);
+                Route::put('/{id}/cancel', [SaleController::class, 'cancel']);
+                Route::put('/{id}/deliver', [SaleController::class, 'markAsDelivered']);
+            });
+            
+            // Sale returns routes
+            Route::prefix('sale-returns')->group(function () {
+                Route::get('/', [SaleReturnController::class, 'index']);
+                Route::post('/', [SaleReturnController::class, 'store']);
+                Route::get('/stats', [SaleReturnController::class, 'getStats']);
+                Route::get('/credit-memo/{creditMemoNumber}', [SaleReturnController::class, 'getByCreditMemoNumber']);
+                Route::get('/{id}', [SaleReturnController::class, 'show']);
+                Route::put('/{id}', [SaleReturnController::class, 'update']);
+                Route::put('/{id}/approve', [SaleReturnController::class, 'approve']);
+                Route::put('/{id}/reject', [SaleReturnController::class, 'reject']);
+                Route::put('/{id}/complete', [SaleReturnController::class, 'complete']);
             });
 
              Route::post('attachments/{attachmentId}', [AttachmentController::class, 'deleteAttachment']);
