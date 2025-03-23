@@ -29,7 +29,8 @@ class Sale extends Model
         'amount_received',
         'change',
         'remarks',
-        'is_delivered'
+        'is_delivered',
+        'term_days'
     ];
 
     protected $casts = [

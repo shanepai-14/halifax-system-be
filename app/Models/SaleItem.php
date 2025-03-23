@@ -15,6 +15,7 @@ class SaleItem extends Model
         'product_id',
         'distribution_price',
         'sold_price',
+        'price_type',
         'quantity',
         'total_distribution_price',
         'total_sold_price',

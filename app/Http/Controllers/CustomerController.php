@@ -51,12 +51,15 @@ class CustomerController extends Controller
     /**
      * Store a newly created customer
      */
+
     public function store(Request $request): JsonResponse
     {
         try {
             $validated = $request->validate([
                 'customer_name' => 'required|string|max:100',
                 'contact_number' => 'nullable|string|max:15',
+                'business_name' => 'nullable|string|max:100',
+                'business_address' => 'nullable|string',
                 'email' => 'nullable|email|max:100',
                 'address' => 'nullable|string',
                 'city' => 'nullable|string|max:50'
@@ -109,6 +112,8 @@ class CustomerController extends Controller
             $validated = $request->validate([
                 'customer_name' => 'sometimes|required|string|max:100',
                 'contact_number' => 'nullable|string|max:15',
+                'business_name' => 'nullable|string|max:100',
+                'business_address' => 'nullable|string',
                 'email' => 'nullable|email|max:100',
                 'address' => 'nullable|string',
                 'city' => 'nullable|string|max:50'

@@ -23,6 +23,7 @@ class CustomerService
             $search = $filters['search'];
             $query->where(function ($q) use ($search) {
                 $q->where('customer_name', 'like', "%{$search}%")
+                  ->orWhere('business_name', 'like', "%{$search}%")
                   ->orWhere('contact_number', 'like', "%{$search}%")
                   ->orWhere('email', 'like', "%{$search}%")
                   ->orWhere('city', 'like', "%{$search}%");

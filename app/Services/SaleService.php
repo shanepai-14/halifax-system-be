@@ -182,7 +182,8 @@ class SaleService
                 'remarks' => $data['remarks'] ?? null,
                 'amount_received' => $data['amount_received'] ?? 0,
                 'change' => $data['change'] ?? 0,
-                'is_delivered' => false
+                'is_delivered' => false,
+                'term_days' => $data['term_days'] ?? 0,
             ]);
             
             // Handle sale items
@@ -251,6 +252,7 @@ class SaleService
                 'product_id' => $product->id,
                 'distribution_price' => $distributionPrice,
                 'sold_price' => $soldPrice,
+                'price_type' => $item['price_type'],
                 'quantity' => $item['quantity'],
                 'total_distribution_price' => $totalDistributionPrice,
                 'total_sold_price' => $totalSoldPrice,
