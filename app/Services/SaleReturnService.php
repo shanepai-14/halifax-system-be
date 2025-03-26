@@ -146,7 +146,7 @@ class SaleReturnService
                 'customer_id' => $sale->customer_id,
                 'return_date' => $data['return_date'] ?? now(),
                 'remarks' => $data['remarks'] ?? null,
-                'status' => SaleReturn::STATUS_PENDING,
+                'status' => SaleReturn::STATUS_APPROVED,
                 'refund_method' => $data['refund_method'] ?? SaleReturn::REFUND_NONE,
                 'refund_amount' => $data['refund_amount'] ?? 0
             ]);
@@ -197,13 +197,6 @@ class SaleReturnService
                 ]);
             }
             
-            // Update sale status
-            $sale->updateStatus();
-            
-            // If auto-approval is needed
-            if (!empty($data['auto_approve']) && $data['auto_approve']) {
-                $this->approveReturn($return->id);
-            }
             
             DB::commit();
             
