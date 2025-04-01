@@ -18,6 +18,8 @@ use App\Http\Controllers\ProductPriceController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\SaleController;
 use App\Http\Controllers\SaleReturnController;
+use App\Http\Controllers\PaymentController;
+
 
 
 
@@ -40,6 +42,8 @@ Route::post('/login', [AuthController::class, 'login']);
             Route::apiResource('products', ProductController::class);
             Route::apiResource('product-categories', ProductCategoryController::class);
             Route::post('products/{id}/image', [ProductController::class, 'uploadImage']);
+
+        });
 
             Route::prefix('suppliers')->group(function () {
                 Route::get('/', [SupplierController::class, 'index']);
@@ -156,6 +160,16 @@ Route::post('/login', [AuthController::class, 'login']);
                 Route::put('/{id}/reject', [SaleReturnController::class, 'reject']);
                 Route::put('/{id}/complete', [SaleReturnController::class, 'complete']);
             });
+            
+            Route::middleware('role:admin,cashier')->group(function () {
+
+            Route::prefix('payments')->group(function () {
+                Route::post('/{saleId}', [PaymentController::class, 'store']);
+                Route::get('/{saleId}/history', [PaymentController::class, 'history']);
+                Route::put('/{paymentId}/void', [PaymentController::class, 'void']);
+                Route::get('/{paymentId}/receipt', [PaymentController::class, 'receipt']);
+            });
+        });
 
              Route::post('attachments/{attachmentId}', [AttachmentController::class, 'deleteAttachment']);
 
@@ -163,5 +177,5 @@ Route::post('/login', [AuthController::class, 'login']);
                 return response()->download(storage_path('app/public/' . $path));
             })->where('path', '.*');
 
-        });
+       
     });

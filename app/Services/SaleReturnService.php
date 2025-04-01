@@ -108,13 +108,6 @@ class SaleReturnService
         ])->where('credit_memo_number', $creditMemoNumber)->firstOrFail();
     }
     
-    /**
-     * Create a new sales return
-     *
-     * @param array $data
-     * @return SaleReturn
-     * @throws Exception
-     */
     public function createReturn(array $data): SaleReturn
     {
         try {
@@ -197,6 +190,15 @@ class SaleReturnService
                 ]);
             }
             
+            // Check if all items are returned by comparing quantities
+            $allItemsReturned = $this->checkIfAllItemsReturned($sale);
+            
+            // Update sale status based on return status
+            if ($allItemsReturned) {
+                $sale->update(['status' => Sale::STATUS_RETURNED]);
+            } else {
+                $sale->update(['status' => Sale::STATUS_PARTIALLY_RETURNED]);
+            }
             
             DB::commit();
             
@@ -207,6 +209,30 @@ class SaleReturnService
         }
     }
     
+    /**
+     * Check if all items in a sale have been fully returned
+     * 
+     * @param Sale $sale
+     * @return bool
+     */
+    private function checkIfAllItemsReturned(Sale $sale): bool
+    {
+        foreach ($sale->items as $saleItem) {
+            // Get total quantity of this item that has been returned across all returns
+            $returnedQuantity = SaleReturnItem::whereHas('saleReturn', function($query) use ($sale) {
+                $query->where('sale_id', $sale->id);
+            })->where('sale_item_id', $saleItem->id)
+              ->sum('quantity');
+            
+            // If any item has not been fully returned, return false
+            if ($returnedQuantity < $saleItem->quantity) {
+                return false;
+            }
+        }
+        
+        // All items have been fully returned
+        return true;
+    }
     /**
      * Return inventory for a product
      *

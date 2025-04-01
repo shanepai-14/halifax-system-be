@@ -121,25 +121,7 @@ class Sale extends Model
         return $this->amount_due <= 0;
     }
 
-    /**
-     * Get the total items quantity
-     */
-    // public function getTotalQuantityAttribute()
-    // {
-    //     return $this->items()->sum('quantity');
-    // }
 
-    /**
-     * Get the total items returned quantity
-     */
-    // public function getTotalReturnedQuantityAttribute()
-    // {
-    //     return $this->returns()->sum('quantity');
-    // }
-
-    /**
-     * Set the invoice number with a unique prefix
-     */
     public static function generateInvoiceNumber()
     {
         $prefix = 'INV-';
@@ -160,36 +142,5 @@ class Sale extends Model
         return sprintf("%s%s%s%05d", $prefix, $year, $month, $sequence);
     }
 
-    /**
-     * Update the sale status based on payments and returns
-     */
-    public function updateStatus()
-    {
-        $totalReturned = $this->total_returned_quantity;
-        $totalQuantity = $this->total_quantity;
-        $amountReceived = $this->amount_received ?? 0;
-        
-        // Check if all items have been returned
-        if ($totalReturned >= $totalQuantity) {
-            $this->status = self::STATUS_RETURNED;
-        }
-        // Check if some items have been returned
-        else if ($totalReturned > 0) {
-            $this->status = self::STATUS_PARTIALLY_RETURNED;
-        }
-        // Check payment status
-        else if ($amountReceived >= $this->total) {
-            $this->status = self::STATUS_COMPLETED;
-        }
-        else if ($amountReceived > 0 && $amountReceived < $this->total) {
-            $this->status = self::STATUS_PARTIALLY_PAID;
-        }
-        else {
-            $this->status = self::STATUS_UNPAID;
-        }
-        
-        $this->save();
-        
-        return $this;
-    }
+
 }
