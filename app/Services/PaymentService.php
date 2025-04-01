@@ -181,4 +181,75 @@ class PaymentService
             'sale' => $sale->load('items.product', 'customer')
         ];
     }
+
+    public function getPaymentStats(array $filters = []): array
+    {
+        $query = SalePayment::query();
+        
+        // Apply date filters if provided
+        if (!empty($filters['date_from'])) {
+            $query->whereDate('payment_date', '>=', $filters['date_from']);
+        }
+
+        if (!empty($filters['date_to'])) {
+            $query->whereDate('payment_date', '<=', $filters['date_to']);
+        }
+        
+        // Calculate statistics
+        return [
+            'total_payments' => $query->count(),
+            'total_amount' => $query->sum('amount'),
+            'completed_amount' => (clone $query)->where('status', SalePayment::STATUS_COMPLETED)->sum('amount'),
+            'voided_amount' => (clone $query)->where('status', SalePayment::STATUS_VOIDED)->sum('amount'),
+            'cash_payments' => (clone $query)->where('payment_method', SalePayment::METHOD_CASH)->count(),
+            'electronic_payments' => (clone $query)->whereIn('payment_method', [
+                SalePayment::METHOD_CREDIT_CARD,
+                SalePayment::METHOD_DEBIT_CARD,
+                SalePayment::METHOD_BANK_TRANSFER,
+                SalePayment::METHOD_ONLINE,
+                SalePayment::METHOD_MOBILE_PAYMENT
+            ])->count()
+        ];
+    }
+
+    public function getAllPayments(array $filters = [], ?int $perPage = null)
+    {
+        $query = SalePayment::with(['sale.customer','sale.items', 'receivedBy', 'user', 'voidedBy']);
+        
+        // Apply filters
+        if (!empty($filters['search'])) {
+            $search = $filters['search'];
+            $query->where(function ($q) use ($search) {
+                $q->where('reference_number', 'like', "%{$search}%")
+                ->orWhereHas('sale', function ($sq) use ($search) {
+                    $sq->where('invoice_number', 'like', "%{$search}%");
+                });
+            });
+        }
+
+        if (!empty($filters['payment_method'])) {
+            $query->where('payment_method', $filters['payment_method']);
+        }
+
+        if (!empty($filters['status'])) {
+            $query->where('status', $filters['status']);
+        }
+
+        if (!empty($filters['date_from'])) {
+            $query->whereDate('payment_date', '>=', $filters['date_from']);
+        }
+
+        if (!empty($filters['date_to'])) {
+            $query->whereDate('payment_date', '<=', $filters['date_to']);
+        }
+        
+        // Apply sorting
+        $sortBy = $filters['sort_by'] ?? 'payment_date';
+        $sortOrder = $filters['sort_order'] ?? 'desc';
+        $query->orderBy($sortBy, $sortOrder);
+        
+        // Paginate results
+        $perPage = $perPage ?? 10;
+        return $query->paginate($perPage);
+    }
 }

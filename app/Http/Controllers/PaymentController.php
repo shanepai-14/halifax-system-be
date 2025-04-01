@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Services\PaymentService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use App\Models\SalePayment;
 use Exception;
 
 class PaymentController extends Controller
@@ -16,6 +17,38 @@ class PaymentController extends Controller
         $this->paymentService = $paymentService;
         
     }
+
+    public function index(Request $request): JsonResponse
+    {
+        try {
+            $filters = [
+                'search' => $request->search,
+                'payment_method' => $request->payment_method,
+                'status' => $request->status,
+                'date_from' => $request->date_from,
+                'date_to' => $request->date_to,
+                'sort_by' => $request->sort_by,
+                'sort_order' => $request->sort_order
+            ];
+
+            $payments = $this->paymentService->getAllPayments(
+                $filters,
+                $request->per_page
+            );
+
+            return response()->json([
+                'status' => 'success',
+                'data' => $payments,
+                'message' => 'Payments retrieved successfully'
+            ]);
+        } catch (Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Error retrieving payments',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+}
 
     /**
      * Store a newly created payment for a sale
@@ -127,6 +160,30 @@ class PaymentController extends Controller
             return response()->json([
                 'status' => 'error',
                 'message' => 'Error retrieving payment receipt',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function getStats(Request $request): JsonResponse
+    {
+        try {
+            $filters = [
+                'date_from' => $request->date_from,
+                'date_to' => $request->date_to
+            ];
+    
+            $stats = $this->paymentService->getPaymentStats($filters);
+    
+            return response()->json([
+                'status' => 'success',
+                'data' => $stats,
+                'message' => 'Payment statistics retrieved successfully'
+            ]);
+        } catch (Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Error retrieving payment statistics',
                 'error' => $e->getMessage()
             ], 500);
         }

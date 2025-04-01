@@ -202,8 +202,7 @@ class SaleService
                 ]);
             }
             
-            // Update sale status
-            // $sale->updateStatus();
+
             
             DB::commit();
             
@@ -418,8 +417,6 @@ class SaleService
                 'change' => max(0, $totalReceived - $sale->total)
             ]);
             
-            // Update sale status
-            $sale->updateStatus();
             
             DB::commit();
             

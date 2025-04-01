@@ -164,10 +164,12 @@ Route::post('/login', [AuthController::class, 'login']);
             Route::middleware('role:admin,cashier')->group(function () {
 
             Route::prefix('payments')->group(function () {
+                Route::get('/', [PaymentController::class, 'index']);
                 Route::post('/{saleId}', [PaymentController::class, 'store']);
                 Route::get('/{saleId}/history', [PaymentController::class, 'history']);
                 Route::put('/{paymentId}/void', [PaymentController::class, 'void']);
                 Route::get('/{paymentId}/receipt', [PaymentController::class, 'receipt']);
+                Route::get('/stats', [PaymentController::class, 'getStats']);
             });
         });
 
