@@ -140,8 +140,6 @@ class SaleReturn extends Model
         $this->status = self::STATUS_COMPLETED;
         $this->save();
         
-        // Update sale status
-        $this->sale->updateStatus();
         
         return $this;
     }

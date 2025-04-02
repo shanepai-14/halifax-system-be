@@ -19,8 +19,8 @@ use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\SaleController;
 use App\Http\Controllers\SaleReturnController;
 use App\Http\Controllers\PaymentController;
-
-
+use App\Http\Controllers\PettyCashController;
+use App\Http\Controllers\EmployeeController;
 
 
 
@@ -170,6 +170,39 @@ Route::post('/login', [AuthController::class, 'login']);
                 Route::put('/{paymentId}/void', [PaymentController::class, 'void']);
                 Route::get('/{paymentId}/receipt', [PaymentController::class, 'receipt']);
                 Route::get('/stats', [PaymentController::class, 'getStats']);
+            });
+
+            Route::prefix('employees')->group(function () {
+                Route::get('/', [EmployeeController::class, 'index']);
+                Route::post('/', [EmployeeController::class, 'store']);
+                Route::get('/stats', [EmployeeController::class, 'getStats']);
+                Route::get('/trashed', [EmployeeController::class, 'trashed']);
+                Route::get('/{id}', [EmployeeController::class, 'show']);
+                Route::put('/{id}', [EmployeeController::class, 'update']);
+                Route::delete('/{id}', [EmployeeController::class, 'destroy']);
+                Route::post('/{id}/restore', [EmployeeController::class, 'restore']);
+            });
+        
+            // Petty Cash routes
+            Route::prefix('petty-cash')->group(function () {
+                // General
+                Route::get('/balance', [PettyCashController::class, 'getBalance']);
+                Route::get('/stats', [PettyCashController::class, 'getStats']);
+                
+                // Funds
+                Route::get('/funds', [PettyCashController::class, 'indexFunds']);
+                Route::post('/funds', [PettyCashController::class, 'storeFund']);
+                Route::put('/funds/{id}/approve', [PettyCashController::class, 'approveFund']);
+                
+                // Transactions
+                Route::get('/transactions', [PettyCashController::class, 'indexTransactions']);
+                Route::post('/transactions', [PettyCashController::class, 'storeTransaction']);
+                Route::put('/transactions/{id}/settle', [PettyCashController::class, 'settleTransaction']);
+                Route::put('/transactions/{id}/approve', [PettyCashController::class, 'approveTransaction']);
+                Route::put('/transactions/{id}/cancel', [PettyCashController::class, 'cancelTransaction']);
+                
+                // Employee transactions
+                Route::get('/employees/{employeeId}/transactions', [PettyCashController::class, 'getTransactionsByEmployee']);
             });
         });
 
