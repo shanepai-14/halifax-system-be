@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Exception;
+use Illuminate\Support\Facades\Log;
 
 class PettyCashService
 {
@@ -22,18 +23,20 @@ class PettyCashService
         $totalFunds = PettyCashFund::where('status', PettyCashFund::STATUS_APPROVED)->sum('amount');
         $totalIssued = PettyCashTransaction::whereIn('status', [
             PettyCashTransaction::STATUS_ISSUED,
+            PettyCashTransaction::STATUS_SETTLED,
             PettyCashTransaction::STATUS_APPROVED
         ])->sum('amount_issued');
+
         $totalReturned = PettyCashTransaction::whereIn('status', [
             PettyCashTransaction::STATUS_SETTLED,
             PettyCashTransaction::STATUS_APPROVED
         ])->sum('amount_returned');
-        $totalSpent = PettyCashTransaction::whereIn('status', [
-            PettyCashTransaction::STATUS_SETTLED,
-            PettyCashTransaction::STATUS_APPROVED
-        ])->sum('amount_spent');
-        
-        return $totalFunds - ($totalIssued - $totalReturned - $totalSpent);
+
+
+        $actual_spent = $totalIssued - $totalReturned;
+
+
+        return  $totalFunds - $actual_spent;
     }
 
     /**
