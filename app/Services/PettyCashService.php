@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\PettyCashFund;
 use App\Models\PettyCashTransaction;
 use App\Models\Employee;
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
@@ -149,6 +150,7 @@ class PettyCashService
             // Set default values for new transaction
             $data['amount_spent'] = $data['amount_spent'] ?? 0;
             $data['amount_returned'] = $data['amount_returned'] ?? 0;
+            $data['date'] = $data['date'] ?? Carbon::now();
             
             $transaction = PettyCashTransaction::create($data);
             
@@ -316,7 +318,7 @@ class PettyCashService
         }
         
         // Sort by date if not specified
-        $query->orderBy($filters['sort_by'] ?? 'date', $filters['sort_order'] ?? 'desc');
+        $query->orderBy($filters['sort_by'] ?? 'created_at', $filters['sort_order'] ?? 'desc');
 
         return $perPage ? $query->paginate($perPage) : $query->get();
     }
