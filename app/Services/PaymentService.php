@@ -36,6 +36,14 @@ class PaymentService
             if (empty($data['user_id'])) {
                 $data['user_id'] = Auth::id();
             }
+
+                     // Set payment status based on payment method
+          $paymentStatus = SalePayment::STATUS_COMPLETED;
+            
+                     // If payment method is cheque, set status to pending
+           if ($data['payment_method'] === 'cheque') {
+                         $paymentStatus = SalePayment::STATUS_PENDING;
+            }
             
             $payment = new SalePayment([
                 'sale_id' => $saleId,
@@ -47,7 +55,7 @@ class PaymentService
                 'reference_number' => $data['reference_number'] ?? null,
                 'received_by' => $data['received_by'],
                 'remarks' => $data['remarks'] ?? null,
-                'status' => SalePayment::STATUS_COMPLETED
+                'status' => $paymentStatus 
             ]);
             
             $payment->save();

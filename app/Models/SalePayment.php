@@ -35,6 +35,8 @@ class SalePayment extends Model
     // Payment status constants
     const STATUS_COMPLETED = 'completed';
     const STATUS_VOIDED = 'voided';
+    const STATUS_PENDING = 'pending';
+    const STATUS_AWAITING_PAYMENT = 'awaiting_payment';
 
     // Payment method constants
     const METHOD_CASH = 'cash';

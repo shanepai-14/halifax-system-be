@@ -14,6 +14,7 @@ class PettyCashTransaction extends Model
         'employee_id',
         'date',
         'purpose',
+        'expense',
         'description',
         'amount_issued',
         'amount_spent',

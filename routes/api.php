@@ -21,6 +21,8 @@ use App\Http\Controllers\SaleReturnController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\PettyCashController;
 use App\Http\Controllers\EmployeeController;
+use App\Http\Controllers\PurposeController;
+use App\Http\Controllers\ExpenseController;
 
 
 
@@ -37,10 +39,12 @@ Route::post('/login', [AuthController::class, 'login']);
             Route::apiResource('purchase-order-costs', PurchaseOrderAdditionalCostController::class);
             Route::apiResource('additional-cost-types', AdditionalCostTypeController::class);
             Route::put('additional-cost-types/{id}/toggle-active', [AdditionalCostTypeController::class, 'toggleActive']);
-
+           
+            Route::apiResource('purposes', PurposeController::class);
             Route::apiResource('attributes', AttributeController::class);
             Route::apiResource('products', ProductController::class);
             Route::apiResource('product-categories', ProductCategoryController::class);
+            Route::apiResource('expenses', ExpenseController::class);
             Route::post('products/{id}/image', [ProductController::class, 'uploadImage']);
 
         });

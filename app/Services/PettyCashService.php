@@ -56,6 +56,7 @@ class PettyCashService
             $fund = PettyCashFund::create($data);
             
             DB::commit();
+            $fund->load(['creator', 'approver']);
             return $fund;
         } catch (Exception $e) {
             DB::rollBack();
@@ -123,7 +124,7 @@ class PettyCashService
         }
         
         // Sort by date if not specified
-        $query->orderBy($filters['sort_by'] ?? 'date', $filters['sort_order'] ?? 'desc');
+        $query->orderBy($filters['sort_by'] ?? 'created_at', $filters['sort_order'] ?? 'desc');
 
         return $perPage ? $query->paginate($perPage) : $query->get();
     }
@@ -161,6 +162,9 @@ class PettyCashService
             }
             
             DB::commit();
+
+            $transaction->load(['employee', 'issuer', 'approver']);
+
             return $transaction;
         } catch (Exception $e) {
             DB::rollBack();
@@ -291,11 +295,11 @@ class PettyCashService
         
         // Apply date range filter if provided
         if (!empty($filters['date_from'])) {
-            $query->whereDate('date', '>=', $filters['date_from']);
+            $query->whereDate('created_at', '>=', $filters['date_from']);
         }
         
         if (!empty($filters['date_to'])) {
-            $query->whereDate('date', '<=', $filters['date_to']);
+            $query->whereDate('created_at', '<=', $filters['date_to']);
         }
         
         // Apply status filter if provided

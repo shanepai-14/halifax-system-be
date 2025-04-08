@@ -172,6 +172,7 @@ class PettyCashController extends Controller
                 'transaction_reference' => 'nullable|string|max:20|unique:petty_cash_transactions',
                 'employee_id' => 'required|exists:employees,id',
                 'purpose' => 'required|string|max:100',
+                'expense' => 'required|string|max:100',
                 'description' => 'nullable|string',
                 'amount_issued' => 'required|numeric|min:0.01',
                 'amount_spent' => 'nullable|numeric|min:0',
