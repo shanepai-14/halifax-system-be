@@ -188,4 +188,44 @@ class PaymentController extends Controller
             ], 500);
         }
     }
+
+    public function complete(int $paymentId): JsonResponse
+    {
+        try {
+            $payment = SalePayment::findOrFail($paymentId);
+            
+            // Only update if the payment is pending
+            if ($payment->status === SalePayment::STATUS_PENDING) {
+                $payment->update([
+                    'status' => SalePayment::STATUS_COMPLETED
+                ]);
+                
+                return response()->json([
+                    'status' => 'success',
+                    'data' => $payment->fresh(['sale.items','receivedBy']),
+                    'message' => 'Payment marked as completed successfully'
+                ]);
+            }
+            
+            // Return appropriate message if not pending
+            if ($payment->status === SalePayment::STATUS_COMPLETED) {
+                return response()->json([
+                    'status' => 'info',
+                    'message' => 'Payment is already completed'
+                ]);
+            } else {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Only pending payments can be completed'
+                ], 422);
+            }
+            
+        } catch (Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Error completing payment',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
 }

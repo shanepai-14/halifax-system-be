@@ -174,6 +174,7 @@ Route::post('/login', [AuthController::class, 'login']);
                 Route::put('/{paymentId}/void', [PaymentController::class, 'void']);
                 Route::get('/{paymentId}/receipt', [PaymentController::class, 'receipt']);
                 Route::get('/stats', [PaymentController::class, 'getStats']);
+                Route::put('/{paymentId}/complete', [PaymentController::class, 'complete']);
             });
 
             Route::prefix('employees')->group(function () {
