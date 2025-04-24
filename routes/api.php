@@ -23,6 +23,7 @@ use App\Http\Controllers\PettyCashController;
 use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\PurposeController;
 use App\Http\Controllers\ExpenseController;
+use App\Http\Controllers\UserController;
 
 
 
@@ -36,18 +37,27 @@ Route::post('/login', [AuthController::class, 'login']);
 
         Route::middleware('role:admin')->group(function () {
 
-            Route::apiResource('purchase-order-costs', PurchaseOrderAdditionalCostController::class);
-            Route::apiResource('additional-cost-types', AdditionalCostTypeController::class);
-            Route::put('additional-cost-types/{id}/toggle-active', [AdditionalCostTypeController::class, 'toggleActive']);
-           
-            Route::apiResource('purposes', PurposeController::class);
-            Route::apiResource('attributes', AttributeController::class);
-            Route::apiResource('products', ProductController::class);
-            Route::apiResource('product-categories', ProductCategoryController::class);
-            Route::apiResource('expenses', ExpenseController::class);
-            Route::post('products/{id}/image', [ProductController::class, 'uploadImage']);
+            Route::prefix('users')->group(function () {
+                Route::get('/', [UserController::class, 'index']);
+                Route::post('/', [UserController::class, 'store']);
+                Route::get('/stats', [UserController::class, 'getStats']);
+                Route::get('/{id}', [UserController::class, 'show']);
+                Route::put('/{id}', [UserController::class, 'update']);
+                Route::delete('/{id}', [UserController::class, 'destroy']);
+            });
 
         });
+
+        Route::apiResource('purchase-order-costs', PurchaseOrderAdditionalCostController::class);
+        Route::apiResource('additional-cost-types', AdditionalCostTypeController::class);
+        Route::put('additional-cost-types/{id}/toggle-active', [AdditionalCostTypeController::class, 'toggleActive']);
+       
+        Route::apiResource('purposes', PurposeController::class);
+        Route::apiResource('attributes', AttributeController::class);
+        Route::apiResource('products', ProductController::class);
+        Route::apiResource('product-categories', ProductCategoryController::class);
+        Route::apiResource('expenses', ExpenseController::class);
+        Route::post('products/{id}/image', [ProductController::class, 'uploadImage']);
 
             Route::prefix('suppliers')->group(function () {
                 Route::get('/', [SupplierController::class, 'index']);

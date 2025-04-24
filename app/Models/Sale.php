@@ -124,7 +124,7 @@ class Sale extends Model
 
     public static function generateInvoiceNumber()
     {
-        $prefix = 'INV-';
+        $prefix = 'DR-';
         $year = date('Y');
         $month = date('m');
         
