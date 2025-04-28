@@ -17,6 +17,8 @@ class PurchaseOrderReceivedItem extends Model
         'product_id',
         'attribute_id',
         'received_quantity',
+        'sold_quantity',    
+        'fully_consumed', 
         'cost_price',
         'distribution_price',
         'walk_in_price',
@@ -30,6 +32,8 @@ class PurchaseOrderReceivedItem extends Model
 
     protected $casts = [
         'received_quantity' => 'decimal:2',
+        'sold_quantity' => 'decimal:2',    
+        'fully_consumed' => 'boolean', 
         'cost_price' => 'decimal:2',
         'walk_in_price' => 'decimal:2',
         'term_price' => 'decimal:2',
@@ -70,6 +74,11 @@ class PurchaseOrderReceivedItem extends Model
     public function getTotalCostAttribute()
     {
         return $this->received_quantity * ($this->cost_price ?? 0);
+    }
+
+    public function getAvailableQuantityAttribute()
+    {
+        return $this->received_quantity - $this->sold_quantity;
     }
 
     // Get price by type

@@ -6,7 +6,7 @@ use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Models\SaleReturn;
 use App\Models\SaleReturnItem;
-use App\Models\Product;
+use App\Models\PurchaseOrderReceivedItem;
 use App\Models\Inventory;
 use App\Models\InventoryLog;
 use Illuminate\Support\Facades\DB;
@@ -258,6 +258,36 @@ class SaleReturnService
         // Update inventory quantity
         $oldQuantity = $inventory->quantity;
         $inventory->incrementQuantity($quantity);
+        
+        // Update sold quantities in batches (LIFO for returns - similar to cancellation)
+        // We restore quantities to the most recent batches first when returning items
+        $remainingToRestore = $quantity;
+        
+        // Get batches that have been sold, starting with most recent
+        $batches = PurchaseOrderReceivedItem::where('product_id', $productId)
+            ->where('sold_quantity', '>', 0)
+            ->orderBy('created_at', 'desc') // Newest first for returns
+            ->get();
+        
+        foreach ($batches as $batch) {
+            if ($remainingToRestore <= 0) break;
+            
+            $soldQuantity = $batch->sold_quantity;
+            $restoreQuantity = min($soldQuantity, $remainingToRestore);
+            
+            // Reduce sold quantity for this batch
+            $batch->sold_quantity -= $restoreQuantity;
+            // Update fully_consumed flag
+            $batch->fully_consumed = ($batch->received_quantity <= $batch->sold_quantity);
+            $batch->save();
+            
+            $remainingToRestore -= $restoreQuantity;
+        }
+        
+        // If we couldn't restore all quantities (unusual), log an error
+        if ($remainingToRestore > 0) {
+            \Log::warning("Could not fully restore sold quantities for returned items. Product ID: {$productId}, Remaining: {$remainingToRestore}");
+        }
         
         // Create inventory log
         InventoryLog::create([

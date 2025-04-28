@@ -81,8 +81,15 @@ class InventoryService
             
 
             $receivedItem = PurchaseOrderReceivedItem::where('product_id', $product->id)
-                ->orderBy('created_at', 'desc')
-                ->first();
+                            ->whereRaw('received_quantity > sold_quantity')
+                            ->orderBy('created_at', 'asc')
+                            ->first();
+
+            if (!$receivedItem) {
+                    $receivedItem = PurchaseOrderReceivedItem::where('product_id', $product->id)
+                                    ->orderBy('created_at', 'desc')
+                                    ->first();
+            }                   
                 
             // Set default prices
             $prices = [

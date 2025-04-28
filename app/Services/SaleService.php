@@ -3,7 +3,7 @@
 namespace App\Services;
 
 use App\Models\Sale;
-use App\Models\SaleItem;
+use App\Models\PurchaseOrderReceivedItem;
 use App\Models\Product;
 use App\Models\Inventory;
 use App\Models\InventoryLog;
@@ -220,6 +220,63 @@ class SaleService
      * @param array $items
      * @return void
      */
+    // protected function processSaleItems(Sale $sale, array $items): void
+    // {
+    //     $totalCogs = 0;
+    //     $totalSold = 0;
+        
+    //     foreach ($items as $item) {
+    //         // Get the product
+    //         $product = Product::findOrFail($item['product_id']);
+            
+    //         // Check inventory
+    //         $inventory = Inventory::where('product_id', $product->id)->first();
+    //         if (!$inventory || $inventory->quantity < $item['quantity']) {
+    //             throw new Exception("Insufficient inventory for product: {$product->product_name}");
+    //         }
+            
+    //         // Calculate prices
+    //         $distributionPrice = $item['distribution_price'] ?? $product->cost_price ?? 0;
+    //         $soldPrice = $item['sold_price'] ?? $this->getPriceByCustomerType($product, $sale->customer_type);
+    //         $discount = $item['discount'] ?? 0;
+            
+    //         // Calculate totals
+    //         $totalDistributionPrice = $distributionPrice * $item['quantity'];
+    //         $totalSoldBeforeDiscount = $soldPrice * $item['quantity'];
+    //         $discountAmount = ($discount / 100) * $totalSoldBeforeDiscount;
+    //         $totalSoldPrice = $totalSoldBeforeDiscount - $discountAmount;
+            
+    //         // Create the sale item
+    //         $saleItem = $sale->items()->create([
+    //             'product_id' => $product->id,
+    //             'distribution_price' => $distributionPrice,
+    //             'sold_price' => $soldPrice,
+    //             'price_type' => $item['price_type'],
+    //             'quantity' => $item['quantity'],
+    //             'total_distribution_price' => $totalDistributionPrice,
+    //             'total_sold_price' => $totalSoldPrice,
+    //             'discount' => $discount,
+    //             'is_discount_approved' => $item['is_discount_approved'] ?? false,
+    //             'approved_by' => $item['approved_by'] ?? null
+    //         ]);
+            
+    //         // Update running totals
+    //         $totalCogs += $totalDistributionPrice;
+    //         $totalSold += $totalSoldPrice;
+            
+    //         // Update inventory
+    //         $this->updateInventoryOnSale($product->id, $item['quantity'], $sale->id);
+    //     }
+        
+    //     // Update sale totals
+    //     $profit = $totalSold - $totalCogs;
+    //     $sale->update([
+    //         'cogs' => $totalCogs,
+    //         'profit' => $profit,
+    //         'total' => $totalSold
+    //     ]);
+    // }
+
     protected function processSaleItems(Sale $sale, array $items): void
     {
         $totalCogs = 0;
@@ -235,25 +292,66 @@ class SaleService
                 throw new Exception("Insufficient inventory for product: {$product->product_name}");
             }
             
-            // Calculate prices
-            $distributionPrice = $item['distribution_price'] ?? $product->cost_price ?? 0;
+            // Process FIFO costing
+            $remainingToAllocate = $item['quantity'];
+            $totalFifoCost = 0;
+            
+            // Get available batches ordered by received date (FIFO)
+            $receivedItems = PurchaseOrderReceivedItem::where('product_id', $product->id)
+                ->whereRaw('received_quantity > sold_quantity')
+                ->orderBy('created_at', 'asc')
+                ->get();
+            
+            foreach ($receivedItems as $receivedItem) {
+                if ($remainingToAllocate <= 0) break;
+                
+                $availableQuantity = $receivedItem->received_quantity - $receivedItem->sold_quantity;
+                $quantityFromBatch = min($availableQuantity, $remainingToAllocate);
+                $costFromBatch = $quantityFromBatch * $receivedItem->distribution_price;
+                
+                // Update the sold quantity in this batch
+                $receivedItem->sold_quantity += $quantityFromBatch;
+                $receivedItem->fully_consumed = ($receivedItem->received_quantity <= $receivedItem->sold_quantity);
+                $receivedItem->save();
+                
+                // Add to our total cost
+                $totalFifoCost += $costFromBatch;
+                $remainingToAllocate -= $quantityFromBatch;
+            }
+            
+            // Handle any remaining quantity (inventory discrepancy)
+            if ($remainingToAllocate > 0) {
+                // Get the latest cost as fallback
+                $latestItem = PurchaseOrderReceivedItem::where('product_id', $product->id)
+                    ->orderBy('created_at', 'desc')
+                    ->first();
+                
+                $fallbackCost = $latestItem ? $latestItem->distribution_price : 0;
+                $fallbackTotal = $remainingToAllocate * $fallbackCost;
+                
+                $totalFifoCost += $fallbackTotal;
+            }
+            
+            // Calculate the average FIFO cost
+            $distributionPrice = $item['quantity'] > 0 ? $totalFifoCost / $item['quantity'] : 0;
+            
+            // Calculate selling price logic
             $soldPrice = $item['sold_price'] ?? $this->getPriceByCustomerType($product, $sale->customer_type);
             $discount = $item['discount'] ?? 0;
             
             // Calculate totals
-            $totalDistributionPrice = $distributionPrice * $item['quantity'];
             $totalSoldBeforeDiscount = $soldPrice * $item['quantity'];
             $discountAmount = ($discount / 100) * $totalSoldBeforeDiscount;
             $totalSoldPrice = $totalSoldBeforeDiscount - $discountAmount;
             
-            // Create the sale item
+            // Create the sale item with FIFO cost
             $saleItem = $sale->items()->create([
                 'product_id' => $product->id,
                 'distribution_price' => $distributionPrice,
                 'sold_price' => $soldPrice,
                 'price_type' => $item['price_type'],
                 'quantity' => $item['quantity'],
-                'total_distribution_price' => $totalDistributionPrice,
+                'total_distribution_price' => $totalFifoCost,
                 'total_sold_price' => $totalSoldPrice,
                 'discount' => $discount,
                 'is_discount_approved' => $item['is_discount_approved'] ?? false,
@@ -261,7 +359,7 @@ class SaleService
             ]);
             
             // Update running totals
-            $totalCogs += $totalDistributionPrice;
+            $totalCogs += $totalFifoCost;
             $totalSold += $totalSoldPrice;
             
             // Update inventory
@@ -509,6 +607,36 @@ class SaleService
             'quantity_after' => $inventory->quantity,
             'notes' => 'Sale cancelled'
         ]);
+        
+        // Update sold quantities in batches (LIFO for cancellation - reverse of FIFO for sales)
+        // We restore quantities to the most recent batches first when canceling
+        $remainingToRestore = $quantity;
+        
+        // Get batches that have been sold, starting with most recent (for cancellation, we use LIFO)
+        $batches = PurchaseOrderReceivedItem::where('product_id', $productId)
+            ->where('sold_quantity', '>', 0)
+            ->orderBy('created_at', 'desc') // Newest first for cancellation
+            ->get();
+        
+        foreach ($batches as $batch) {
+            if ($remainingToRestore <= 0) break;
+            
+            $soldQuantity = $batch->sold_quantity;
+            $restoreQuantity = min($soldQuantity, $remainingToRestore);
+            
+            // Reduce sold quantity for this batch
+            $batch->sold_quantity -= $restoreQuantity;
+            // Update fully_consumed flag
+            $batch->fully_consumed = ($batch->received_quantity <= $batch->sold_quantity);
+            $batch->save();
+            
+            $remainingToRestore -= $restoreQuantity;
+        }
+        
+        // If we couldn't restore all quantities (unusual), log an error
+        if ($remainingToRestore > 0) {
+            \Log::warning("Could not fully restore sold quantities for cancelled sale. Product ID: {$productId}, Remaining: {$remainingToRestore}");
+        }
     }
     
     /**
