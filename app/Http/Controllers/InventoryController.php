@@ -322,4 +322,23 @@ class InventoryController extends Controller
             ], 500);
         }
     }
+    
+    public function getSummaryStats(): JsonResponse
+    {
+        try {
+            $stats = $this->inventoryService->getInventorySummaryStats();
+
+            return response()->json([
+                'status' => 'success',
+                'data' => $stats,
+                'message' => 'Inventory summary statistics retrieved successfully'
+            ]);
+        } catch (Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Error retrieving inventory summary statistics',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
 }

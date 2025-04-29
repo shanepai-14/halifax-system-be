@@ -140,7 +140,91 @@ class InventoryService
             ];
         });
     }
-
+     
+    public function getInventorySummaryStats(): array
+    {
+        // Get all available products with their categories
+        $products = Product::with('category')->get();
+        
+        // Get all received items that aren't fully consumed
+        $receivedItems = PurchaseOrderReceivedItem::where('fully_consumed', false)
+            ->orWhereNull('fully_consumed')
+            ->get();
+            
+        // Count total active products in inventory
+        $totalItems = $products->count();
+        
+        // Calculate total inventory value based on distribution cost of unsold items
+        $totalValue = $receivedItems->sum(function ($item) {
+            return $item->available_quantity * $item->distribution_price;
+        });
+        
+        // Get low stock items
+        $lowStockItems = $products->filter(function ($product) {
+            return $product->inventory && $product->inventory->quantity <= $product->reorder_level;
+        })->count();
+        
+        // Get items that need reordering immediately
+        $reorderNeeded = $products->filter(function ($product) {
+            return $product->inventory && 
+                   $product->inventory->quantity <= ($product->reorder_level * 0.7); // 70% of reorder level
+        })->count();
+        
+        // Calculate inventory value by category
+        $categoriesWithValue = [];
+        
+        // Group received items by product
+        $productItems = $receivedItems->groupBy('product_id');
+        
+        // Calculate value for each product and group by category
+        foreach ($products as $product) {
+            $productId = $product->id;
+            $categoryId = $product->product_category_id;
+            $categoryName = $product->category ? $product->category->name : 'Uncategorized';
+            
+            // Skip if no items for this product
+            if (!isset($productItems[$productId])) {
+                continue;
+            }
+            
+            // Calculate product value from its received items
+            $productValue = $productItems[$productId]->sum(function ($item) {
+                return $item->available_quantity * $item->distribution_price;
+            });
+            
+            // Initialize category if not exists
+            if (!isset($categoriesWithValue[$categoryId])) {
+                $categoriesWithValue[$categoryId] = [
+                    'name' => $categoryName,
+                    'count' => 0,
+                    'value' => 0
+                ];
+            }
+            
+            // Add product to category stats
+            $categoriesWithValue[$categoryId]['count']++;
+            $categoriesWithValue[$categoryId]['value'] += $productValue;
+        }
+        
+        // Sort categories by value (descending)
+        uasort($categoriesWithValue, function ($a, $b) {
+            return $b['value'] <=> $a['value'];
+        });
+        
+        // Get top categories (limit to 5)
+        $topCategories = array_slice($categoriesWithValue, 0, 5, true);
+        
+        return [
+            'totalItems' => $totalItems,
+            'totalValue' => $totalValue,
+            'lowStockItems' => $lowStockItems,
+            'reorderNeeded' => $reorderNeeded,
+            'categoryCount' => count($categoriesWithValue),
+            'topCategories' => $topCategories,
+            'categoriesWithValue' => $categoriesWithValue,
+        ];
+    }
+    
     public function getProductInventory(int $productId): ?Inventory
     {
         return Inventory::with('product')
