@@ -106,16 +106,27 @@ class InventoryController extends Controller
     public function createAdjustment(Request $request): JsonResponse
     {
         try {
-            $validated = $request->validate([
+            // Base validation rules
+            $validationRules = [
                 'id' => 'required|exists:products,id',
                 'adjustment_type' => 'required|string',
                 'quantity' => 'required|numeric|min:0.01',
                 'reason' => 'required|string',
                 'notes' => 'nullable|string'
-            ]);
-
+            ];
+            
+            // Add additional validation rules if adjustment type is addition
+            if ($request->adjustment_type === 'addition') {
+                $validationRules['distribution_price'] = 'required|numeric|min:0';
+                $validationRules['walk_in_price'] = 'required|numeric|min:0';
+                $validationRules['wholesale_price'] = 'required|numeric|min:0';
+                $validationRules['regular_price'] = 'required|numeric|min:0';
+            }
+            
+            $validated = $request->validate($validationRules);
+    
             $adjustment = $this->inventoryService->createAdjustment($validated);
-
+    
             return response()->json([
                 'status' => 'success',
                 'data' => $adjustment,

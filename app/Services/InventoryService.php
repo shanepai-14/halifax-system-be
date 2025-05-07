@@ -7,6 +7,11 @@ use App\Models\InventoryLog;
 use App\Models\InventoryAdjustment;
 use App\Models\Product;
 use App\Models\InventoryCount;
+use App\Models\PurchaseOrder;
+use App\Models\ReceivingReport;
+
+
+
 use App\Models\PurchaseOrderReceivedItem;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
@@ -255,6 +260,80 @@ class InventoryService
      * @return InventoryAdjustment
      * @throws Exception
      */
+    // public function createAdjustment(array $data): InventoryAdjustment
+    // {
+    //     // Validate required data
+    //     if (empty($data['id']) || 
+    //         empty($data['adjustment_type']) || 
+    //         !isset($data['quantity']) ||
+    //         empty($data['reason'])) {
+    //         throw new Exception('Missing required adjustment data');
+    //     }
+        
+    //     try {
+    //         DB::beginTransaction();
+            
+    //         $product = Product::findOrFail($data['id']);
+    //         $inventory = $this->getOrCreateInventory($data['id']);
+            
+    //         // Create adjustment data
+    //         $adjustmentData = [
+    //             'product_id' => $data['id'],
+    //             'user_id' => Auth::id(),
+    //             'adjustment_type' => $data['adjustment_type'],
+    //             'quantity' => $data['quantity'],
+    //             'quantity_before' => $inventory->quantity,
+    //             'reason' => $data['reason'],
+    //             'notes' => $data['notes'] ?? null,
+    //         ];
+            
+    //         // Determine if this is positive or negative adjustment
+    //         $isPositive = in_array($data['adjustment_type'], [
+    //             InventoryAdjustment::TYPE_ADDITION,
+    //             InventoryAdjustment::TYPE_RETURN
+    //         ]);
+            
+    //         $currentProductQuantity = $product->quantity ?? 0;
+
+    //         if ($isPositive) {
+    //             $inventory->incrementQuantity($data['quantity']);
+    //             $product->quantity = $currentProductQuantity + $data['quantity'];
+    //         } else {
+    //              if ($currentProductQuantity < $data['quantity']) {
+    //                 throw new Exception('Insufficient inventory for reduction');
+    //             }
+    
+    //             $inventory->decrementQuantity($data['quantity']);
+    //             $product->quantity = $currentProductQuantity - $data['quantity'];
+    //         }
+    //         $product->save();
+    //         // Set quantity after in adjustment data
+    //         $adjustmentData['quantity_after'] = $inventory->quantity;
+            
+    //         // Create adjustment record
+    //         $adjustment = InventoryAdjustment::create($adjustmentData);
+            
+    //         // Create inventory log
+    //         $this->createInventoryLog(
+    //             $data['id'],
+    //             $isPositive ? InventoryLog::TYPE_ADJUSTMENT_IN : InventoryLog::TYPE_ADJUSTMENT_OUT,
+    //             InventoryLog::REF_ADJUSTMENT,
+    //             $adjustment->id,
+    //             $data['quantity'],
+    //             $adjustmentData['quantity_before'],
+    //             $adjustmentData['quantity_after'],
+    //             null,
+    //             $data['notes'] ?? null
+    //         );
+            
+    //         DB::commit();
+    //         return $adjustment;
+    //     } catch (Exception $e) {
+    //         DB::rollBack();
+    //         throw $e;
+    //     }
+    // }
+
     public function createAdjustment(array $data): InventoryAdjustment
     {
         // Validate required data
@@ -263,6 +342,16 @@ class InventoryService
             !isset($data['quantity']) ||
             empty($data['reason'])) {
             throw new Exception('Missing required adjustment data');
+        }
+        
+        // Validate pricing data for addition type
+        if ($data['adjustment_type'] === InventoryAdjustment::TYPE_ADDITION) {
+            if (!isset($data['distribution_price']) || 
+                !isset($data['walk_in_price']) || 
+                !isset($data['wholesale_price']) || 
+                !isset($data['regular_price'])) {
+                throw new Exception('Missing required pricing data for addition adjustment');
+            }
         }
         
         try {
@@ -291,17 +380,26 @@ class InventoryService
             $currentProductQuantity = $product->quantity ?? 0;
 
             if ($isPositive) {
+                // For addition type, create receiving report
+                if ($data['adjustment_type'] === InventoryAdjustment::TYPE_ADDITION) {
+                    $this->createReceivingReportForAdjustment($data);
+                }
+                
                 $inventory->incrementQuantity($data['quantity']);
                 $product->quantity = $currentProductQuantity + $data['quantity'];
             } else {
-                 if ($currentProductQuantity < $data['quantity']) {
+                if ($currentProductQuantity < $data['quantity']) {
                     throw new Exception('Insufficient inventory for reduction');
                 }
-    
+
+                // For reduction/loss/damage, adjust sold quantities based on FIFO
+                $this->adjustSoldQuantitiesFIFO($data['id'], $data['quantity']);
+                
                 $inventory->decrementQuantity($data['quantity']);
                 $product->quantity = $currentProductQuantity - $data['quantity'];
             }
             $product->save();
+            
             // Set quantity after in adjustment data
             $adjustmentData['quantity_after'] = $inventory->quantity;
             
@@ -317,7 +415,7 @@ class InventoryService
                 $data['quantity'],
                 $adjustmentData['quantity_before'],
                 $adjustmentData['quantity_after'],
-                null,
+                $isPositive && $data['adjustment_type'] === InventoryAdjustment::TYPE_ADDITION ? $data['distribution_price'] : null,
                 $data['notes'] ?? null
             );
             
@@ -326,6 +424,104 @@ class InventoryService
         } catch (Exception $e) {
             DB::rollBack();
             throw $e;
+        }
+    }
+
+    /**
+     * Create a receiving report for inventory addition adjustment
+     *
+     * @param array $data
+     * @return ReceivingReport
+     */
+    protected function createReceivingReportForAdjustment(array $data): ReceivingReport
+    {
+        // Find or create purchase order with batch number 2024112588
+        $purchaseOrder = PurchaseOrder::where('batch_number', '2024112588')->first();
+        
+        if (!$purchaseOrder) {
+            // Create new purchase order if not found
+            $purchaseOrder = PurchaseOrder::create([
+                'supplier_id' => 1, // Default supplier ID for system adjustments
+                'po_number' => 'PO-ADJ-' . date('YmdHis'),
+                'batch_number' => '2024112588',
+                'po_date' => now(),
+                'total_amount' => 0,
+                'status' => PurchaseOrder::STATUS_PENDING,
+                'remarks' => 'System-generated PO for inventory adjustments'
+            ]);
+        }
+        
+        // Create receiving report
+        $receivingReport = new ReceivingReport([
+            'po_id' => $purchaseOrder->po_id,
+            'invoice' => 'INV-ADJ-' . date('YmdHis'),
+            'term' => 0,
+            'is_paid' => true,
+        ]);
+        
+        $receivingReport->save();
+        
+        // Create received item
+        $receivedItem = new PurchaseOrderReceivedItem([
+            'rr_id' => $receivingReport->rr_id,
+            'product_id' => $data['id'],
+            'attribute_id' => null,
+            'received_quantity' => $data['quantity'],
+            'cost_price' => $data['distribution_price'] ?? 0,
+            'distribution_price' => $data['distribution_price'] ?? 0,
+            'walk_in_price' => $data['walk_in_price'] ?? 0,
+            'term_price' => $data['term_price'] ?? 0,
+            'wholesale_price' => $data['wholesale_price'] ?? 0,
+            'regular_price' => $data['regular_price'] ?? 0,
+            'remarks' => 'Added via inventory adjustment',
+            'processed_for_inventory' => true,
+            'processed_at' => now()
+        ]);
+        
+        $receivingReport->received_items()->save($receivedItem);
+        
+        // Update PO status
+        $purchaseOrder->status = PurchaseOrder::STATUS_PARTIALLY_RECEIVED;
+        $purchaseOrder->save();
+        
+        return $receivingReport;
+    }
+
+    /**
+     * Adjust sold quantities based on FIFO for reduction adjustments
+     *
+     * @param int $productId
+     * @param float $quantity
+     * @return void
+     */
+    protected function adjustSoldQuantitiesFIFO(int $productId, float $quantity): void
+    {
+        $remainingToReduce = $quantity;
+        
+        // Get batches that have available quantity, starting with oldest first (FIFO)
+        $batches = PurchaseOrderReceivedItem::where('product_id', $productId)
+            ->whereRaw('received_quantity > sold_quantity')
+            ->orderBy('created_at', 'asc') // Oldest first for FIFO
+            ->get();
+        
+        foreach ($batches as $batch) {
+            if ($remainingToReduce <= 0) break;
+            
+            $availableQuantity = $batch->received_quantity - $batch->sold_quantity;
+            $reduceQuantity = min($availableQuantity, $remainingToReduce);
+            
+            // Increase sold quantity for this batch
+            $batch->sold_quantity += $reduceQuantity;
+            // Update fully_consumed flag
+            $batch->fully_consumed = ($batch->received_quantity <= $batch->sold_quantity);
+            $batch->save();
+            
+            $remainingToReduce -= $reduceQuantity;
+        }
+        
+        // If we couldn't reduce all quantities, log an error
+        if ($remainingToReduce > 0) {
+            // Log::warning("Could not fully reduce quantities for adjusted items. Product ID: {$productId}, Remaining: {$remainingToReduce}");
         }
     }
     
