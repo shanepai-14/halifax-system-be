@@ -30,6 +30,13 @@ class ReceivingReportController extends Controller
                 'additionalCosts.costType'
             ]);
 
+            $query->whereHas('purchaseOrder', function($q) {
+                $q->where(function($innerQ) {
+                    $innerQ->where('batch_number', '!=', '2024112588')
+                          ->orWhereNull('batch_number');
+                });
+            });
+
             // Apply filters
             if ($request->has('search')) {
                 $search = $request->search;

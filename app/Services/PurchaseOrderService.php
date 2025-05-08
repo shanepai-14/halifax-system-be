@@ -52,6 +52,11 @@ class PurchaseOrderService
     {
         $query = PurchaseOrder::with(['supplier', 'items.product']);
 
+        $query->where(function($q) {
+            $q->where('batch_number', '!=', '2024112588')
+              ->orWhereNull('batch_number');
+        });
+
         // Apply filters
         if (isset($filters['status'])) {
             $query->where('status', $filters['status']);
