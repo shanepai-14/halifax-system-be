@@ -8,6 +8,8 @@ use App\Models\Product;
 use App\Models\Inventory;
 use App\Models\InventoryLog;
 use App\Models\Customer;
+use App\Models\Notification;
+use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Database\Eloquent\Collection;
@@ -205,7 +207,9 @@ class SaleService
 
             
             DB::commit();
-            
+
+            event(new \App\Events\SaleCreated($sale));
+
             return $this->getSaleById($sale->id);
         } catch (Exception $e) {
             DB::rollBack();
@@ -382,6 +386,36 @@ class SaleService
      * @param int $quantity
      * @return void
      */
+    // protected function updateInventoryOnSale(int $productId, int $quantity, int $saleId): void
+    // {
+    //     // Get inventory
+    //     $inventory = Inventory::where('product_id', $productId)->first();
+    //     if (!$inventory) {
+    //         throw new Exception("Inventory record not found for product ID: {$productId}");
+    //     }
+        
+    //     // Update inventory quantity
+    //     $currentQuantity = $inventory->quantity;
+    //     $inventory->decrementQuantity($quantity);
+        
+    //     // Create inventory log
+    //     InventoryLog::create([
+    //         'product_id' => $productId,
+    //         'user_id' => Auth::id(),
+    //         'transaction_type' => InventoryLog::TYPE_SALES,
+    //         'reference_type' => 'sale',
+    //         'reference_id' => $saleId,
+    //         'quantity' => $quantity,
+    //         'quantity_before' => $currentQuantity,
+    //         'quantity_after' => $inventory->quantity,
+    //         'notes' => "Product sold in sale #{$saleId}"
+    //     ]);
+
+    //      $notificationService = app(NotificationService::class);
+    //      $notificationService->checkInventoryLevels($productId, $inventory->quantity);
+    // }
+    
+
     protected function updateInventoryOnSale(int $productId, int $quantity, int $saleId): void
     {
         // Get inventory
@@ -392,7 +426,9 @@ class SaleService
         
         // Update inventory quantity
         $currentQuantity = $inventory->quantity;
-        $inventory->decrementQuantity($quantity);
+        $newQuantity = max(0, $currentQuantity - $quantity);
+        $inventory->quantity = $newQuantity;
+        $inventory->save();
         
         // Create inventory log
         InventoryLog::create([
@@ -403,11 +439,57 @@ class SaleService
             'reference_id' => $saleId,
             'quantity' => $quantity,
             'quantity_before' => $currentQuantity,
-            'quantity_after' => $inventory->quantity,
+            'quantity_after' => $newQuantity,
             'notes' => "Product sold in sale #{$saleId}"
         ]);
+        
+        // Get product details for notifications
+        $product = Product::findOrFail($productId);
+        
+        // Check inventory levels and create notifications if needed
+        if ($newQuantity === 0) {
+            // Get all admin users to notify about out of stock
+            $adminUsers = User::where('role', 'admin')->get();
+            foreach ($adminUsers as $admin) {
+                Notification::create([
+                    'user_id' => $admin->id,
+                    'title' => 'Out of Stock Alert',
+                    'message' => "Product {$product->product_name} is now out of stock.",
+                    'type' => Notification::TYPE_INVENTORY_OUT,
+                    'reference_type' => 'product',
+                    'reference_id' => $productId,
+                    'is_read' => false,
+                    'data' => [
+                        'product_id' => $productId,
+                        'product_name' => $product->product_name,
+                        'product_code' => $product->product_code,
+                        'quantity' => $newQuantity
+                    ]
+                ]);
+            }
+        } elseif ($newQuantity <= $product->reorder_level) {
+            // Get all admin users to notify about low stock
+            $adminUsers = User::where('role', 'admin')->get();
+            foreach ($adminUsers as $admin) {
+                Notification::create([
+                    'user_id' => $admin->id,
+                    'title' => 'Low Stock Alert',
+                    'message' => "Product {$product->product_name} is below reorder level ({$product->reorder_level}).",
+                    'type' => Notification::TYPE_INVENTORY_LOW,
+                    'reference_type' => 'product',
+                    'reference_id' => $productId,
+                    'is_read' => false,
+                    'data' => [
+                        'product_id' => $productId,
+                        'product_name' => $product->product_name,
+                        'product_code' => $product->product_code,
+                        'quantity' => $newQuantity,
+                        'reorder_level' => $product->reorder_level
+                    ]
+                ]);
+            }
+        }
     }
-    
     /**
      * Get price based on customer type
      *
@@ -635,7 +717,7 @@ class SaleService
         
         // If we couldn't restore all quantities (unusual), log an error
         if ($remainingToRestore > 0) {
-            \Log::warning("Could not fully restore sold quantities for cancelled sale. Product ID: {$productId}, Remaining: {$remainingToRestore}");
+            // Log::warning("Could not fully restore sold quantities for cancelled sale. Product ID: {$productId}, Remaining: {$remainingToRestore}");
         }
     }
     
@@ -686,6 +768,47 @@ class SaleService
             'total_profit' => $totalProfit,
             'average_sale_value' => $averageSaleValue,
             'profit_margin' => $totalRevenue > 0 ? ($totalProfit / $totalRevenue) * 100 : 0
+        ];
+    }
+
+    public function getCustomerPurchaseHistory(int $customerId): array
+    {
+        // Get all sales for this customer
+        $sales = Sale::with([
+            'items.product', 
+            'customer'
+        ])
+        ->where('customer_id', $customerId)
+        ->where('status', '!=', Sale::STATUS_CANCELLED) // Exclude cancelled sales
+        ->orderBy('order_date', 'desc')
+        ->get();
+        
+        // Format the data to focus on items
+        $purchaseItems = [];
+        
+        foreach ($sales as $sale) {
+            foreach ($sale->items as $item) {
+                $purchaseItems[] = [
+                    'sale_id' => $sale->id,
+                    'invoice_number' => $sale->invoice_number,
+                    'order_date' => $sale->order_date,
+                    'delivery_date' => $sale->delivery_date,
+                    'item_id' => $item->id,
+                    'product_id' => $item->product_id,
+                    'product_name' => $item->product->product_name ?? "Product #{$item->product_id}",
+                    'product_code' => $item->product->product_code ?? "P-{$item->product_id}",
+                    'quantity' => $item->quantity,
+                    'price' => $item->sold_price,
+                    'discount' => $item->discount,
+                    'total' => $item->total_sold_price,
+                    'status' => $sale->status
+                ];
+            }
+        }
+        
+        return [
+            'customer' => $sales->first()->customer ?? null,
+            'items' => $purchaseItems
         ];
     }
 

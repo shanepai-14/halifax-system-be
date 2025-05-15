@@ -24,6 +24,7 @@ use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\PurposeController;
 use App\Http\Controllers\ExpenseController;
 use App\Http\Controllers\UserController;
+use App\Http\Controllers\NotificationController;
 
 
 
@@ -59,6 +60,14 @@ Route::post('/login', [AuthController::class, 'login']);
         Route::apiResource('expenses', ExpenseController::class);
         Route::post('products/{id}/image', [ProductController::class, 'uploadImage']);
 
+              Route::prefix('notifications')->group(function () {
+                Route::get('/', [NotificationController::class, 'index']);
+                Route::get('/unread-count', [NotificationController::class, 'getUnreadCount']);
+                Route::put('/{id}/read', [NotificationController::class, 'markAsRead']);
+                Route::put('/mark-all-read', [NotificationController::class, 'markAllAsRead']);
+                Route::delete('/{id}', [NotificationController::class, 'destroy']);
+            });
+
             Route::prefix('suppliers')->group(function () {
                 Route::get('/', [SupplierController::class, 'index']);
                 Route::post('/', [SupplierController::class, 'store']);
@@ -67,6 +76,7 @@ Route::post('/login', [AuthController::class, 'login']);
                 Route::get('/{id}', [SupplierController::class, 'show']);
                 Route::put('/{id}', [SupplierController::class, 'update']);
                 Route::delete('/{id}', [SupplierController::class, 'destroy']);
+                Route::get('/{id}/purchase-history', [SupplierController::class, 'purchaseHistory']);
                 Route::post('/{id}/restore', [SupplierController::class, 'restore']);
             });
 
@@ -161,6 +171,7 @@ Route::post('/login', [AuthController::class, 'login']);
                 Route::put('/{id}/payment', [SaleController::class, 'updatePayment']);
                 Route::put('/{id}/cancel', [SaleController::class, 'cancel']);
                 Route::put('/{id}/deliver', [SaleController::class, 'markAsDelivered']);
+                Route::get('/customers/{customerId}/purchase-history', [SaleController::class, 'getCustomerPurchaseHistory']);
             });
             
             // Sale returns routes

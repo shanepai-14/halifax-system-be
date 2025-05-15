@@ -171,4 +171,22 @@ class SupplierController extends Controller
             ], 500);
         }
     }
+     public function purchaseHistory(string $id): JsonResponse
+    {
+        try {
+            $history = $this->supplierService->getSupplierPurchaseHistory($id);
+
+            return response()->json([
+                'status' => 'success',
+                'data' => $history,
+                'message' => 'Supplier purchase history retrieved successfully'
+            ]);
+        } catch (Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Error retrieving supplier purchase history',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
 }

@@ -24,4 +24,9 @@ class Supplier extends Model
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
+
+        public function purchaseOrders()
+    {
+        return $this->hasMany(PurchaseOrder::class, 'supplier_id', 'supplier_id');
+    }
 }
