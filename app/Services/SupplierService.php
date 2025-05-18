@@ -11,6 +11,7 @@ use Illuminate\Pagination\LengthAwarePaginator;
 use Exception;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Database\Eloquent\Builder;
 
 class SupplierService
 {
@@ -177,70 +178,83 @@ class SupplierService
         }
     }
 
-    public function getSupplierPurchaseHistory(string $supplierId): array
-    {
-        // Get the supplier
-        $supplier = Supplier::findOrFail($supplierId);
+public function getSupplierPurchaseHistory(string $supplierId, int $page = 1, int $perPage = 50): array
+{
+    // Get the supplier
+    $supplier = Supplier::findOrFail($supplierId);
+    
+    // Get purchase orders for this supplier
+    $purchaseOrders = PurchaseOrder::where('supplier_id', $supplierId)
+        ->orderBy('po_date', 'desc')
+        ->get();
         
-        // Get purchase orders for this supplier
-        $purchaseOrders = PurchaseOrder::where('supplier_id', $supplierId)
-            ->orderBy('po_date', 'desc')
-            ->get();
+    // Get receiving reports for these purchase orders
+    $receivingReportIds = ReceivingReport::whereIn('po_id', $purchaseOrders->pluck('po_id'))
+        ->pluck('rr_id');
+        
+    // Calculate total items count for pagination info
+    $totalItems = PurchaseOrderReceivedItem::whereIn('rr_id', $receivingReportIds)->count();
+    
+    // Get all received items for these reports with pagination
+    // Fix the ambiguous column issue by specifying the table name
+    $receivedItems = PurchaseOrderReceivedItem::whereIn('purchase_order_received_items.rr_id', $receivingReportIds)
+        ->with(['product', 'receivingReport.purchaseOrder'])
+        ->skip(($page - 1) * $perPage)
+        ->take($perPage)
+        ->get()
+        ->map(function ($item) {
+            // Access the related models and process the data
+            $receivingReport = $item->receivingReport;
+            $purchaseOrder = $receivingReport ? $receivingReport->purchaseOrder : null;
             
-        // Get receiving reports for these purchase orders
-        $receivingReportIds = ReceivingReport::whereIn('po_id', $purchaseOrders->pluck('po_id'))
-            ->pluck('rr_id');
-            
-        // Get all received items for these reports
-        $receivedItems = PurchaseOrderReceivedItem::whereIn('rr_id', $receivingReportIds)
-            ->with(['product', 'receivingReport.purchaseOrder'])
-            ->get()
-            ->map(function ($item) {
-                // Access the related models and process the data
-                $receivingReport = $item->receivingReport;
-                $purchaseOrder = $receivingReport ? $receivingReport->purchaseOrder : null;
-                
-                return [
-                    'received_item_id' => $item->received_item_id,
-                    'product_id' => $item->product_id,
-                    'product_name' => $item->product->product_name ?? 'Unknown Product',
-                    'product_code' => $item->product->product_code ?? 'N/A',
-                    'received_quantity' => $item->received_quantity,
-                    'cost_price' => $item->cost_price,
-                    'walk_in_price' => $item->walk_in_price,
-                    'wholesale_price' => $item->wholesale_price,
-                    'regular_price' => $item->regular_price,
-                    'total_cost' => $item->received_quantity * $item->cost_price,
-                    'batch_number' => $receivingReport ? $receivingReport->batch_number : 'N/A',
-                    'rr_date' => $receivingReport ? $receivingReport->created_at->format('Y-m-d') : 'N/A',
-                    'po_number' => $purchaseOrder ? $purchaseOrder->po_number : 'N/A',
-                    'po_date' => $purchaseOrder ? $purchaseOrder->po_date->format('Y-m-d') : 'N/A',
-                    'payment_status' => $receivingReport ? ($receivingReport->is_paid ? 'Paid' : 'Unpaid') : 'N/A',
-                    'invoice' => $receivingReport ? $receivingReport->invoice : 'N/A'
-                ];
-            });
-        
-        // Calculate statistics
-        $totalItems = $receivedItems->count();
-        $totalQuantity = $receivedItems->sum('received_quantity');
-        $totalValue = $receivedItems->sum('total_cost');
-        $latestPurchase = $purchaseOrders->sortByDesc('po_date')->first();
-        
-        // Group items by PO for easier display
-        $itemsByPO = $receivedItems->groupBy('po_number');
-        
-        return [
-            'supplier' => $supplier,
-            'stats' => [
-                'total_orders' => $purchaseOrders->count(),
-                'total_items' => $totalItems,
-                'total_quantity' => $totalQuantity,
-                'total_value' => $totalValue,
-                'latest_purchase' => $latestPurchase ? $latestPurchase->po_date->format('Y-m-d') : 'N/A'
-            ],
-            'purchase_orders' => $purchaseOrders,
-            'items' => $receivedItems,
-            'items_by_po' => $itemsByPO
-        ];
-    }
+            return [
+                'received_item_id' => $item->received_item_id,
+                'product_id' => $item->product_id,
+                'product_name' => $item->product->product_name ?? 'Unknown Product',
+                'product_code' => $item->product->product_code ?? 'N/A',
+                'product_category' => $item->product->category->name ?? 'Uncategorized',
+                'received_quantity' => $item->received_quantity,
+                'cost_price' => $item->cost_price,
+                'walk_in_price' => $item->walk_in_price,
+                'wholesale_price' => $item->wholesale_price,
+                'regular_price' => $item->regular_price,
+                'total_cost' => $item->received_quantity * $item->cost_price,
+                'batch_number' => $receivingReport ? $receivingReport->batch_number : 'N/A',
+                'rr_date' => $receivingReport ? $receivingReport->created_at->format('Y-m-d') : 'N/A',
+                'po_number' => $purchaseOrder ? $purchaseOrder->po_number : 'N/A',
+                'po_date' => $purchaseOrder ? $purchaseOrder->po_date->format('Y-m-d') : 'N/A',
+                'payment_status' => $receivingReport ? ($receivingReport->is_paid ? 'Paid' : 'Unpaid') : 'N/A',
+                'invoice' => $receivingReport ? $receivingReport->invoice : 'N/A'
+            ];
+        });
+    
+
+    $totalQuantity = $receivedItems->sum('received_quantity');
+    $totalValue = $receivedItems->sum('total_cost');
+    $latestPurchase = $purchaseOrders->sortByDesc('po_date')->first();
+    
+    // Group items by PO for easier display
+    $itemsByPO = $receivedItems->groupBy('po_number');
+    
+    return [
+        'supplier' => $supplier,
+        'stats' => [
+            'total_orders' => $purchaseOrders->count(),
+            'total_items' => $totalItems,
+            'total_quantity' => $totalQuantity,
+            'total_value' => $totalValue,
+            'latest_purchase' => $latestPurchase ? $latestPurchase->po_date->format('Y-m-d') : 'N/A'
+        ],
+        'purchase_orders' => $purchaseOrders,
+        'items' => $receivedItems,
+        'items_by_po' => $itemsByPO,
+        'pagination' => [
+            'current_page' => $page,
+            'per_page' => $perPage,
+            'total_items' => $totalItems,
+            'has_more' => $totalItems > ($page * $perPage)
+        ]
+    ];
+}
+    
 }

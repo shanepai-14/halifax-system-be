@@ -171,10 +171,13 @@ class SupplierController extends Controller
             ], 500);
         }
     }
-     public function purchaseHistory(string $id): JsonResponse
+    public function purchaseHistory(string $id, Request $request): JsonResponse
     {
         try {
-            $history = $this->supplierService->getSupplierPurchaseHistory($id);
+            $page = $request->input('page', 1);
+            $perPage = $request->input('per_page', 50);
+            
+            $history = $this->supplierService->getSupplierPurchaseHistory($id, $page, $perPage);
 
             return response()->json([
                 'status' => 'success',
