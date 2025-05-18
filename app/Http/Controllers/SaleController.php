@@ -313,22 +313,25 @@ class SaleController extends Controller
         }
     }
 
-    public function getCustomerPurchaseHistory(int $customerId): JsonResponse
-    {
-        try {
-            $purchaseHistory = $this->saleService->getCustomerPurchaseHistory($customerId);
+        public function getCustomerPurchaseHistory(int $customerId, Request $request): JsonResponse
+        {
+            try {
+                $page = $request->input('page', 1);
+                $perPage = $request->input('per_page', 50);
+                
+                $purchaseHistory = $this->saleService->getCustomerPurchaseHistory($customerId, $page, $perPage);
 
-            return response()->json([
-                'status' => 'success',
-                'data' => $purchaseHistory,
-                'message' => 'Customer purchase history retrieved successfully'
-            ]);
-        } catch (Exception $e) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Error retrieving customer purchase history',
-                'error' => $e->getMessage()
-            ], 500);
+                return response()->json([
+                    'status' => 'success',
+                    'data' => $purchaseHistory,
+                    'message' => 'Customer purchase history retrieved successfully'
+                ]);
+            } catch (Exception $e) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Error retrieving customer purchase history',
+                    'error' => $e->getMessage()
+                ], 500);
+            }
         }
-    }
 }

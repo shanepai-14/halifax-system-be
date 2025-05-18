@@ -771,45 +771,224 @@ class SaleService
         ];
     }
 
-    public function getCustomerPurchaseHistory(int $customerId): array
-    {
-        // Get all sales for this customer
-        $sales = Sale::with([
-            'items.product', 
-            'customer'
-        ])
-        ->where('customer_id', $customerId)
-        ->where('status', '!=', Sale::STATUS_CANCELLED) // Exclude cancelled sales
-        ->orderBy('order_date', 'desc')
-        ->get();
-        
-        // Format the data to focus on items
-        $purchaseItems = [];
-        
-        foreach ($sales as $sale) {
-            foreach ($sale->items as $item) {
-                $purchaseItems[] = [
-                    'sale_id' => $sale->id,
-                    'invoice_number' => $sale->invoice_number,
-                    'order_date' => $sale->order_date,
-                    'delivery_date' => $sale->delivery_date,
-                    'item_id' => $item->id,
-                    'product_id' => $item->product_id,
-                    'product_name' => $item->product->product_name ?? "Product #{$item->product_id}",
-                    'product_code' => $item->product->product_code ?? "P-{$item->product_id}",
-                    'quantity' => $item->quantity,
-                    'price' => $item->sold_price,
-                    'discount' => $item->discount,
-                    'total' => $item->total_sold_price,
-                    'status' => $sale->status
-                ];
-            }
+
+// In SaleService.php
+public function getCustomerPurchaseHistory(int $customerId, int $page = 1, int $perPage = 50): array
+{
+    // Get the customer
+    $customer = Customer::findOrFail($customerId);
+    
+    // Query to get all sales for this customer (for counting total)
+    $salesQuery = Sale::where('sales.customer_id', $customerId)
+        ->where('sales.status', '!=', Sale::STATUS_CANCELLED);
+    
+    // Get total count for pagination
+    $totalItems = DB::table('sales')
+        ->where('sales.customer_id', $customerId)
+        ->where('sales.status', '!=', Sale::STATUS_CANCELLED)
+        ->join('sale_items', 'sales.id', '=', 'sale_items.sale_id')
+        ->count();
+    
+    // Get all sales with items (paginated)
+    $sales = Sale::with([
+        'items.product',
+    ])
+    ->where('sales.customer_id', $customerId)
+    ->where('sales.status', '!=', Sale::STATUS_CANCELLED)
+    ->orderBy('order_date', 'desc')
+    ->get();
+    
+    // Format the data to focus on items with pagination
+    $allPurchaseItems = [];
+    
+    foreach ($sales as $sale) {
+        foreach ($sale->items as $item) {
+            $allPurchaseItems[] = [
+                'sale_id' => $sale->id,
+                'invoice_number' => $sale->invoice_number,
+                'order_date' => $sale->order_date,
+                'delivery_date' => $sale->delivery_date,
+                'item_id' => $item->id,
+                'product_id' => $item->product_id,
+                'product_name' => $item->product->product_name ?? "Product #{$item->product_id}",
+                'product_code' => $item->product->product_code ?? "P-{$item->product_id}",
+                'quantity' => $item->quantity,
+                'price' => $item->sold_price,
+                'discount' => $item->discount,
+                'total' => $item->total_sold_price,
+                'status' => $sale->status
+            ];
         }
-        
-        return [
-            'customer' => $sales->first()->customer ?? null,
-            'items' => $purchaseItems
-        ];
     }
+    
+    // Apply pagination to the collected items
+    $offset = ($page - 1) * $perPage;
+    $paginatedItems = array_slice($allPurchaseItems, $offset, $perPage);
+    
+    // Group items by invoice for "By Orders" tab
+    $itemsByInvoice = [];
+    foreach ($allPurchaseItems as $item) {
+        $invoiceNumber = $item['invoice_number'];
+        if (!isset($itemsByInvoice[$invoiceNumber])) {
+            $itemsByInvoice[$invoiceNumber] = [];
+        }
+        $itemsByInvoice[$invoiceNumber][] = $item;
+    }
+    
+    // Calculate summary statistics
+    $totalOrders = count($itemsByInvoice);
+    $totalQuantity = array_sum(array_column($allPurchaseItems, 'quantity'));
+    $totalValue = array_sum(array_column($allPurchaseItems, 'total'));
+    
+    return [
+        'customer' => $customer,
+        'stats' => [
+            'total_orders' => $totalOrders,
+            'total_items' => count($allPurchaseItems),
+            'total_quantity' => $totalQuantity,
+            'total_value' => $totalValue
+        ],
+        'items' => $paginatedItems,
+        'items_by_invoice' => $itemsByInvoice,
+        'pagination' => [
+            'current_page' => $page,
+            'per_page' => $perPage,
+            'total_items' => $totalItems,
+            'has_more' => $totalItems > ($page * $perPage)
+        ]
+    ];
+}
+
+// For better performance, here's an optimized version that does proper pagination at the database level
+public function getCustomerPurchaseHistoryOptimized(int $customerId, int $page = 1, int $perPage = 50): array
+{
+    // Get the customer
+    $customer = Customer::findOrFail($customerId);
+    
+    // Count total items for pagination
+    $totalItems = DB::table('sale_items')
+        ->join('sales', 'sale_items.sale_id', '=', 'sales.id')
+        ->where('sales.customer_id', $customerId)
+        ->where('sales.status', '!=', Sale::STATUS_CANCELLED)
+        ->count();
+    
+    // Get paginated items
+    $paginatedItems = DB::table('sale_items')
+        ->select([
+            'sale_items.id as item_id',
+            'sale_items.product_id',
+            'sale_items.quantity',
+            'sale_items.sold_price as price',
+            'sale_items.discount',
+            'sale_items.total_sold_price as total',
+            'sales.id as sale_id',
+            'sales.invoice_number',
+            'sales.order_date',
+            'sales.delivery_date',
+            'sales.status',
+            'products.product_name',
+            'products.product_code'
+        ])
+        ->join('sales', 'sale_items.sale_id', '=', 'sales.id')
+        ->join('products', 'sale_items.product_id', '=', 'products.id')
+        ->where('sales.customer_id', $customerId)
+        ->where('sales.status', '!=', Sale::STATUS_CANCELLED)
+        ->orderBy('sales.order_date', 'desc')
+        ->skip(($page - 1) * $perPage)
+        ->take($perPage)
+        ->get()
+        ->map(function ($item) {
+            // Format the data
+            return [
+                'item_id' => $item->item_id,
+                'sale_id' => $item->sale_id,
+                'invoice_number' => $item->invoice_number,
+                'order_date' => $item->order_date,
+                'delivery_date' => $item->delivery_date,
+                'product_id' => $item->product_id,
+                'product_name' => $item->product_name ?? "Product #{$item->product_id}",
+                'product_code' => $item->product_code ?? "P-{$item->product_id}",
+                'quantity' => $item->quantity,
+                'price' => $item->price,
+                'discount' => $item->discount,
+                'total' => $item->total,
+                'status' => $item->status
+            ];
+        })
+        ->toArray();
+    
+    // Get all items grouped by invoice (for the "By Orders" tab)
+    $itemsByInvoice = DB::table('sale_items')
+        ->select([
+            'sale_items.id as item_id',
+            'sale_items.product_id',
+            'sale_items.quantity',
+            'sale_items.sold_price as price',
+            'sale_items.discount',
+            'sale_items.total_sold_price as total',
+            'sales.id as sale_id',
+            'sales.invoice_number',
+            'sales.order_date',
+            'sales.delivery_date',
+            'sales.status',
+            'products.product_name',
+            'products.product_code'
+        ])
+        ->join('sales', 'sale_items.sale_id', '=', 'sales.id')
+        ->join('products', 'sale_items.product_id', '=', 'products.id')
+        ->where('sales.customer_id', $customerId)
+        ->where('sales.status', '!=', Sale::STATUS_CANCELLED)
+        ->orderBy('sales.order_date', 'desc')
+        ->get()
+        ->groupBy('invoice_number')
+        ->map(function ($items) {
+            return $items->map(function ($item) {
+                return [
+                    'item_id' => $item->item_id,
+                    'sale_id' => $item->sale_id,
+                    'invoice_number' => $item->invoice_number,
+                    'order_date' => $item->order_date,
+                    'delivery_date' => $item->delivery_date,
+                    'product_id' => $item->product_id,
+                    'product_name' => $item->product_name ?? "Product #{$item->product_id}",
+                    'product_code' => $item->product_code ?? "P-{$item->product_id}",
+                    'quantity' => $item->quantity,
+                    'price' => $item->price,
+                    'discount' => $item->discount,
+                    'total' => $item->total,
+                    'status' => $item->status
+                ];
+            });
+        })
+        ->toArray();
+    
+    // Calculate statistics
+    $statsQuery = DB::table('sale_items')
+        ->join('sales', 'sale_items.sale_id', '=', 'sales.id')
+        ->where('sales.customer_id', $customerId)
+        ->where('sales.status', '!=', Sale::STATUS_CANCELLED);
+    
+    $totalQuantity = $statsQuery->sum('sale_items.quantity');
+    $totalValue = $statsQuery->sum('sale_items.total_sold_price');
+    $totalOrders = count($itemsByInvoice);
+    
+    return [
+        'customer' => $customer,
+        'stats' => [
+            'total_orders' => $totalOrders,
+            'total_items' => $totalItems,
+            'total_quantity' => $totalQuantity,
+            'total_value' => $totalValue
+        ],
+        'items' => $paginatedItems,
+        'items_by_invoice' => $itemsByInvoice,
+        'pagination' => [
+            'current_page' => $page,
+            'per_page' => $perPage,
+            'total_items' => $totalItems,
+            'has_more' => $totalItems > ($page * $perPage)
+        ]
+    ];
+}
 
 }
