@@ -86,6 +86,7 @@ class SaleController extends Controller
                 'items.*.price_type' => 'required|string',
                 'items.*.distribution_price' => 'required|numeric|min:0',
                 'items.*.discount' => 'nullable|numeric|min:0|max:100',
+                'items.*.composition' => 'nullable|string',
                 'items.*.is_discount_approved' => 'nullable|boolean',
                 'items.*.approved_by' => 'nullable|exists:users,id'
             ]);

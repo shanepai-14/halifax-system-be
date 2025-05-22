@@ -20,6 +20,7 @@ class SaleItem extends Model
         'total_distribution_price',
         'total_sold_price',
         'discount',
+        'composition',
         'is_discount_approved',
         'approved_by'
     ];

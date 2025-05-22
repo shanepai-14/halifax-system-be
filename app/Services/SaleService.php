@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\Log;
 use Exception;
 
 class SaleService
@@ -36,9 +37,29 @@ class SaleService
     {
         $query = Sale::with(['customer', 'user', 'items.product']);
         
-        // Apply filters
+        // Handle status filter with special cases
         if (!empty($filters['status'])) {
-            $query->where('status', $filters['status']);
+            if ($filters['status'] === 'all') {
+                // Don't apply any status filter - get all statuses
+            } elseif ($filters['status'] === 'all_except_cancelled') {
+                // Special filter for profit reports - exclude cancelled sales
+                $query->where('status', '!=', Sale::STATUS_CANCELLED);
+            } elseif ($filters['status'] === 'active') {
+                // Active sales (not cancelled or returned)
+                $query->whereNotIn('status', [Sale::STATUS_CANCELLED, Sale::STATUS_RETURNED]);
+            } elseif ($filters['status'] === 'paid') {
+                // Paid sales (completed or partially paid)
+                $query->whereIn('status', [Sale::STATUS_COMPLETED, Sale::STATUS_PARTIALLY_PAID]);
+            } elseif ($filters['status'] === 'unpaid') {
+                // Unpaid sales (pending or unpaid)
+                $query->whereIn('status', [Sale::STATUS_PENDING, Sale::STATUS_UNPAID]);
+            } else {
+                // Specific status filter
+                $query->where('status', $filters['status']);
+            }
+        } else {
+            // Default behavior: exclude cancelled sales if no status filter is specified
+            $query->where('status', '!=', Sale::STATUS_CANCELLED);
         }
         
         if (!empty($filters['customer_id'])) {
@@ -69,14 +90,14 @@ class SaleService
             $search = $filters['search'];
             $query->where(function ($q) use ($search) {
                 $q->where('invoice_number', 'like', "%{$search}%")
-                  ->orWhere('phone', 'like', "%{$search}%")
-                  ->orWhere('address', 'like', "%{$search}%")
-                  ->orWhere('city', 'like', "%{$search}%")
-                  ->orWhereHas('customer', function ($customerQuery) use ($search) {
-                      $customerQuery->where('customer_name', 'like', "%{$search}%")
-                                   ->orWhere('contact_number', 'like', "%{$search}%")
-                                   ->orWhere('email', 'like', "%{$search}%");
-                  });
+                ->orWhere('phone', 'like', "%{$search}%")
+                ->orWhere('address', 'like', "%{$search}%")
+                ->orWhere('city', 'like', "%{$search}%")
+                ->orWhereHas('customer', function ($customerQuery) use ($search) {
+                    $customerQuery->where('customer_name', 'like', "%{$search}%")
+                                ->orWhere('contact_number', 'like', "%{$search}%")
+                                ->orWhere('email', 'like', "%{$search}%");
+                });
             });
         }
         
@@ -358,9 +379,12 @@ class SaleService
                 'total_distribution_price' => $totalFifoCost,
                 'total_sold_price' => $totalSoldPrice,
                 'discount' => $discount,
+                'composition'=> $item['composition'] ?? null,
                 'is_discount_approved' => $item['is_discount_approved'] ?? false,
                 'approved_by' => $item['approved_by'] ?? null
             ]);
+
+            Log::info($item);
             
             // Update running totals
             $totalCogs += $totalFifoCost;
