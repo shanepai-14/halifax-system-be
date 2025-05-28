@@ -93,6 +93,7 @@ class SaleService
                 ->orWhere('phone', 'like', "%{$search}%")
                 ->orWhere('address', 'like', "%{$search}%")
                 ->orWhere('city', 'like', "%{$search}%")
+                ->orWhere('total', 'like', "%{$search}%")
                 ->orWhereHas('customer', function ($customerQuery) use ($search) {
                     $customerQuery->where('customer_name', 'like', "%{$search}%")
                                 ->orWhere('contact_number', 'like', "%{$search}%")
@@ -840,6 +841,7 @@ public function getCustomerPurchaseHistory(int $customerId, int $page = 1, int $
                 'price' => $item->sold_price,
                 'discount' => $item->discount,
                 'total' => $item->total_sold_price,
+                'total_sale_amount' => $sale->total,
                 'status' => $sale->status
             ];
         }

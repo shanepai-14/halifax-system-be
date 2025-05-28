@@ -478,7 +478,7 @@ public function updateStatus(Request $request, String $poNumber)
         // Update purchase order status
         $purchaseOrder->status = PurchaseOrder::STATUS_PARTIALLY_RECEIVED;
         $purchaseOrder->updateStatus(); // This will set to COMPLETED if all items are fully received
-        
+        $receivingReport->refreshTotals();
         DB::commit();
         
         // Load relationships for the response
@@ -667,23 +667,23 @@ public function updateReceivingReport(int $id, Request $request): ReceivingRepor
         }
         
         // Track existing additional cost IDs
-        $existingCostIds = $receivingReport->additionalCosts->pluck('additional_cost_id')->toArray();
+        $existingCostIds = $receivingReport->additionalCosts->pluck('po_cost_id')->toArray();
         $updatedCostIds = [];
         
         // Process additional costs - update existing or create new ones
         if (!empty($data['additional_costs'])) {
             foreach ($data['additional_costs'] as $costData) {
                 // Check if this cost has an ID (existing cost)
-                if (isset($costData['additional_cost_id']) && in_array($costData['additional_cost_id'], $existingCostIds)) {
+                if (isset($costData['po_cost_id']) && in_array($costData['po_cost_id'], $existingCostIds)) {
                     // Update existing cost
-                    $additionalCost = PurchaseOrderAdditionalCost::findOrFail($costData['additional_cost_id']);
+                    $additionalCost = PurchaseOrderAdditionalCost::findOrFail($costData['po_cost_id']);
                     $additionalCost->update([
                         'cost_type_id' => $costData['cost_type_id'],
                         'amount' => $costData['amount'],
                         'remarks' => $costData['remarks'] ?? null,
                     ]);
                     
-                    $updatedCostIds[] = $costData['additional_cost_id'];
+                    $updatedCostIds[] = $costData['po_cost_id'];
                 } else {
                     // Create new cost
                     $additionalCost = new PurchaseOrderAdditionalCost([
@@ -694,7 +694,7 @@ public function updateReceivingReport(int $id, Request $request): ReceivingRepor
                     ]);
                     
                     $receivingReport->additionalCosts()->save($additionalCost);
-                    $updatedCostIds[] = $additionalCost->additional_cost_id;
+                    $updatedCostIds[] = $additionalCost->po_cost_id;
                 }
             }
         }
@@ -702,12 +702,12 @@ public function updateReceivingReport(int $id, Request $request): ReceivingRepor
         // Delete costs that weren't included in the update
         $costsToDelete = array_diff($existingCostIds, $updatedCostIds);
         if (!empty($costsToDelete)) {
-            PurchaseOrderAdditionalCost::whereIn('additional_cost_id', $costsToDelete)->delete();
+            PurchaseOrderAdditionalCost::whereIn('po_cost_id', $costsToDelete)->delete();
         }
         
         // Update purchase order status - might need to recalculate based on all receiving reports
         $purchaseOrder->updateStatus(); // This will set to COMPLETED if all items are fully received or keep as PARTIALLY_RECEIVED
-        
+        $receivingReport->refreshTotals();
         DB::commit();
         
         // Load relationships for the response

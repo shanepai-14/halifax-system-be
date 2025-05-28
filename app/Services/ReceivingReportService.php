@@ -154,7 +154,7 @@ class ReceivingReportService
             // Update purchase order status
             $purchaseOrder->status = PurchaseOrder::STATUS_PARTIALLY_RECEIVED;
             $purchaseOrder->updateStatus(); // This will set to COMPLETED if all items are fully received
-            
+            $receivingReport->refreshTotals();
             DB::commit();
             
             return $this->getReceivingReportById($receivingReport->rr_id);
@@ -219,6 +219,7 @@ class ReceivingReportService
             
             // Update the purchase order status
             $report->purchaseOrder->updateStatus();
+            $report->refreshTotals();
             
             DB::commit();
             

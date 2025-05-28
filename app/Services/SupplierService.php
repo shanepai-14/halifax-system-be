@@ -219,6 +219,7 @@ public function getSupplierPurchaseHistory(string $supplierId, int $page = 1, in
                 'wholesale_price' => $item->wholesale_price,
                 'regular_price' => $item->regular_price,
                 'total_cost' => $item->received_quantity * $item->cost_price,
+                'grand_total' => $receivingReport->grand_total,
                 'batch_number' => $receivingReport ? $receivingReport->batch_number : 'N/A',
                 'rr_date' => $receivingReport ? $receivingReport->created_at->format('Y-m-d') : 'N/A',
                 'po_number' => $purchaseOrder ? $purchaseOrder->po_number : 'N/A',
