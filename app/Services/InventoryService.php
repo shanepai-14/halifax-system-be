@@ -75,6 +75,7 @@ class InventoryService
         $query = Inventory::with([
             'product.category',
             'product.currentPrice', // Load the active/current price relation
+            'product.activePriceBracket.bracketItems' // Load the active price bracket
         ]);
 
         // Get all inventory data with their products
@@ -84,7 +85,6 @@ class InventoryService
         return $inventories->map(function ($inventory) {
             $product = $inventory->product;
             
-
             $receivedItem = PurchaseOrderReceivedItem::where('product_id', $product->id)
                             ->whereRaw('received_quantity > sold_quantity')
                             ->orderBy('created_at', 'asc')
@@ -127,6 +127,28 @@ class InventoryService
                 }
             }
 
+            // Get active price bracket if exists
+            $priceBracket = null;
+            if ($product->use_bracket_pricing && $product->activePriceBracket) {
+                $bracket = $product->activePriceBracket;
+                $priceBracket = [
+                    'id' => $bracket->id,
+                    'is_active' => true,
+                    'effective_from' => $bracket->effective_from,
+                    'effective_to' => $bracket->effective_to,
+                    'items' => $bracket->bracketItems->map(function ($item) {
+                        return [
+                            'id' => $item->id,
+                            'min_quantity' => $item->min_quantity,
+                            'max_quantity' => $item->max_quantity,
+                            'price' => $item->price,
+                            'price_type' => $item->price_type,
+                            'is_active' => $item->is_active
+                        ];
+                    })->toArray()
+                ];
+            }
+
             // Format inventory data as requested
             return [
                 'id' => $product->id,
@@ -141,7 +163,8 @@ class InventoryService
                 'category' => $product->category ? $product->category->name : 'Uncategorized',
                 'product_image' => $product->product_image,
                 'status' => $status,
-                'reorder_level' => $product->reorder_level
+                'reorder_level' => $product->reorder_level,
+                'price_bracket' => $priceBracket
             ];
         });
     }
