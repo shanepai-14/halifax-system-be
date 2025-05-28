@@ -25,6 +25,7 @@ use App\Http\Controllers\PurposeController;
 use App\Http\Controllers\ExpenseController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\BracketPricingController;
 
 
 
@@ -59,6 +60,9 @@ Route::post('/login', [AuthController::class, 'login']);
         Route::apiResource('product-categories', ProductCategoryController::class);
         Route::apiResource('expenses', ExpenseController::class);
         Route::post('products/{id}/image', [ProductController::class, 'uploadImage']);
+
+
+
 
               Route::prefix('notifications')->group(function () {
                 Route::get('/', [NotificationController::class, 'index']);
@@ -231,6 +235,29 @@ Route::post('/login', [AuthController::class, 'login']);
                 // Employee transactions
                 Route::get('/employees/{employeeId}/transactions', [PettyCashController::class, 'getTransactionsByEmployee']);
             });
+
+            Route::prefix('bracket-pricing')->group(function () {
+            // Product-specific brackets
+            Route::get('/products/{productId}/brackets', [BracketPricingController::class, 'getProductBrackets']);
+            Route::get('/products/{productId}/active-bracket', [BracketPricingController::class, 'getActiveBracket']);
+            Route::post('/products/{productId}/brackets', [BracketPricingController::class, 'store']);
+            Route::delete('/products/{productId}/deactivate', [BracketPricingController::class, 'deactivate']);
+            
+            // Pricing calculations
+            Route::get('/products/{productId}/breakdown', [BracketPricingController::class, 'getPricingBreakdown']);
+            Route::post('/products/{productId}/calculate-price', [BracketPricingController::class, 'calculatePrice']);
+            Route::get('/products/{productId}/suggestions', [BracketPricingController::class, 'getOptimalPricingSuggestions']);
+            
+            // Import functionality
+            Route::post('/products/{productId}/import-csv', [BracketPricingController::class, 'importFromCsv']);
+            
+            // Bracket-specific operations
+            Route::get('/brackets/{bracketId}', [BracketPricingController::class, 'show']);
+            Route::put('/brackets/{bracketId}', [BracketPricingController::class, 'update']);
+            Route::delete('/brackets/{bracketId}', [BracketPricingController::class, 'destroy']);
+            Route::post('/brackets/{bracketId}/activate', [BracketPricingController::class, 'activate']);
+            Route::post('/brackets/{bracketId}/clone', [BracketPricingController::class, 'clone']);
+        });
         });
 
              Route::post('attachments/{attachmentId}', [AttachmentController::class, 'deleteAttachment']);

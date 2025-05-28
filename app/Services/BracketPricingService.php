@@ -411,7 +411,7 @@ class BracketPricingService
             throw new Exception('No cost information available for this product');
         }
 
-        $costPrice = $latestReceivedItem->cost_price;
+        $costPrice = $latestReceivedItem->distribution_price;
         $suggestions = [];
 
         foreach ($quantities as $index => $quantity) {
