@@ -447,8 +447,8 @@ public function updateStatus(Request $request, String $poNumber)
                 'distribution_price' => $itemData['distribution_price'],
                 'walk_in_price' => $itemData['walk_in_price'],
                 'term_price' => $itemData['term_price'] ?? 0,
-                'wholesale_price' => $itemData['wholesale_price'],
-                'regular_price' => $itemData['regular_price'],
+                'wholesale_price' => $itemData['wholesale_price'] ?? $itemData['walk_in_price'],
+                'regular_price' => $itemData['regular_price'] ?? $itemData['walk_in_price'],
                 'remarks' => $itemData['remarks'] ?? null,
                 
             ]);
@@ -634,8 +634,8 @@ public function updateReceivingReport(int $id, Request $request): ReceivingRepor
                     'distribution_price' => $itemData['distribution_price'],
                     'walk_in_price' => $itemData['walk_in_price'],
                     'term_price' => $itemData['term_price'] ?? 0,
-                    'wholesale_price' => $itemData['wholesale_price'],
-                    'regular_price' => $itemData['regular_price'],
+                    'wholesale_price' => $itemData['wholesale_price'] ?? $itemData['walk_in_price'],
+                    'regular_price' => $itemData['regular_price'] ?? $itemData['walk_in_price'],
                     'remarks' => $itemData['remarks'] ?? null,
                 ]);
                 
@@ -650,8 +650,8 @@ public function updateReceivingReport(int $id, Request $request): ReceivingRepor
                     'cost_price' => $itemData['cost_price'],
                     'walk_in_price' => $itemData['walk_in_price'],
                     'term_price' => $itemData['term_price'] ?? 0,
-                    'wholesale_price' => $itemData['wholesale_price'],
-                    'regular_price' => $itemData['regular_price'],
+                    'wholesale_price' => $itemData['wholesale_price'] ?? $itemData['walk_in_price'],
+                    'regular_price' => $itemData['regular_price'] ?? $itemData['walk_in_price'],
                     'remarks' => $itemData['remarks'] ?? null,
                 ]);
                 

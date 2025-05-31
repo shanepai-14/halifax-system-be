@@ -298,8 +298,8 @@ class ReceivingReportController extends Controller
                         'cost_price' => $itemData['cost_price'],
                         'walk_in_price' => $itemData['walk_in_price'],
                         'term_price' => $itemData['term_price'] ?? 0,
-                        'wholesale_price' => $itemData['wholesale_price'],
-                        'regular_price' => $itemData['regular_price'],
+                        'wholesale_price' => $itemData['wholesale_price'] ?? $itemData['walk_in_price'],
+                        'regular_price' => $itemData['regular_price'] ?? $itemData['walk_in_price'],
                         'remarks' => $itemData['remarks'] ?? null,
                     ]);
                     
@@ -314,8 +314,8 @@ class ReceivingReportController extends Controller
                         'cost_price' => $itemData['cost_price'],
                         'walk_in_price' => $itemData['walk_in_price'],
                         'term_price' => $itemData['term_price'] ?? 0,
-                        'wholesale_price' => $itemData['wholesale_price'],
-                        'regular_price' => $itemData['regular_price'],
+                        'wholesale_price' => $itemData['wholesale_price'] ?? $itemData['walk_in_price'],
+                        'regular_price' => $itemData['regular_price'] ?? $itemData['walk_in_price'],
                         'remarks' => $itemData['remarks'] ?? null,
                     ]);
                     
