@@ -1,8 +1,11 @@
 <?php
 
+
 namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
+use App\Models\Sale;
+use App\Observers\SaleObserver;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -11,7 +14,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // Register the SalesSummaryService
+        $this->app->singleton(\App\Services\SalesSummaryService::class, function ($app) {
+            return new \App\Services\SalesSummaryService();
+        });
     }
 
     /**
@@ -19,6 +25,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        // Register the Sale observer
+        Sale::observe(SaleObserver::class);
     }
 }
