@@ -37,7 +37,7 @@ return new class extends Migration
             
             // Average metrics
             $table->decimal('avg_sale_value', 10, 2)->default(0);
-            $table->decimal('avg_profit_margin', 5, 2)->default(0); // Percentage
+            $table->decimal('avg_profit_margin', 10, 2)->default(0);// Percentage
             
             // Metadata
             $table->timestamp('last_updated_at')->nullable();

@@ -209,7 +209,7 @@ class SalesSummaryService
             DB::beginTransaction();
 
             // Clear existing summaries
-            SalesSummary::truncate();
+            // SalesSummary::truncate();
 
             // Get date range of all sales
             $dateRange = Sale::selectRaw('MIN(order_date) as min_date, MAX(order_date) as max_date')->first();
