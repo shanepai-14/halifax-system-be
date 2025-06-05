@@ -1,0 +1,20 @@
+# Laravel Backend
+<VirtualHost *:80>
+    ServerName laravel.local
+    DocumentRoot "C:/path/to/your/laravel/public"
+    <Directory "C:/path/to/your/laravel/public">
+        AllowOverride All
+        Require all granted
+    </Directory>
+</VirtualHost>
+
+# React Frontend (if serving static build)
+<VirtualHost *:80>
+    ServerName react.local
+    DocumentRoot "C:/path/to/your/react/build"
+    <Directory "C:/path/to/your/react/build">
+        AllowOverride All
+        Require all granted
+        FallbackResource /index.html
+    </Directory>
+</VirtualHost>
