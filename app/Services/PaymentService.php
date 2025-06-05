@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\SalePayment;
 use App\Models\Sale;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Database\Eloquent\Collection;
@@ -51,7 +52,7 @@ class PaymentService
                 'payment_method' => $data['payment_method'],
                 'amount' => $data['amount'],
                 'change' => max(0, $data['amount'] - $sale->total),
-                'payment_date' => $data['payment_date'],
+                'payment_date' => $data['payment_date'] ?? Carbon::now(),
                 'reference_number' => $data['reference_number'] ?? null,
                 'received_by' => $data['received_by'],
                 'remarks' => $data['remarks'] ?? null,
