@@ -143,7 +143,7 @@ class PettyCashController extends Controller
                 'sort_order' => $request->sort_order
             ];
 
-            $transactions = $this->pettyCashService->getAllPettyCashTransactions(
+            $transactions = $this->pettyCashService->getTransactionsWithBalance(
                 $filters,
                 $request->per_page
             );
@@ -327,4 +327,5 @@ class PettyCashController extends Controller
             ], 500);
         }
     }
+
 }

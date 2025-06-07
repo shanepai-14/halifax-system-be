@@ -16,6 +16,8 @@ class PettyCashFund extends Model
         'description',
         'created_by',
         'approved_by',
+        'balance_before',
+        'balance_after',
         'status'
     ];
 

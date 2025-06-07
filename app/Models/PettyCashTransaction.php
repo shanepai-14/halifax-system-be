@@ -22,6 +22,9 @@ class PettyCashTransaction extends Model
         'receipt_attachment',
         'remarks',
         'status',
+        'balance_before',
+        'balance_after',
+        'balance_change',
         'issued_by',
         'approved_by'
     ];

@@ -4,7 +4,6 @@ namespace App\Services;
 
 use App\Models\PettyCashFund;
 use App\Models\PettyCashTransaction;
-use App\Models\Employee;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -12,7 +11,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Exception;
-use Illuminate\Support\Facades\Log;
 
 class PettyCashService
 {
@@ -57,6 +55,10 @@ class PettyCashService
             
             DB::commit();
             $fund->load(['creator', 'approver']);
+
+            if ($fund->status === PettyCashFund::STATUS_APPROVED) {
+                $this->updateFundBalance($fund);
+            }
             return $fund;
         } catch (Exception $e) {
             DB::rollBack();
@@ -162,7 +164,7 @@ class PettyCashService
             }
             
             DB::commit();
-
+            $this->updateTransactionBalance($transaction);
             $transaction->load(['employee', 'issuer', 'approver']);
 
             return $transaction;
@@ -213,6 +215,7 @@ class PettyCashService
             }
             
             DB::commit();
+            $this->updateTransactionBalance($transaction);
             return $transaction->fresh();
         } catch (Exception $e) {
             DB::rollBack();
@@ -242,6 +245,7 @@ class PettyCashService
             ]);
             
             DB::commit();
+            $this->updateTransactionBalance($transaction);
             return $transaction->fresh();
         } catch (Exception $e) {
             DB::rollBack();
@@ -274,6 +278,7 @@ class PettyCashService
             ]);
             
             DB::commit();
+            $this->updateTransactionBalance($transaction, $transaction->amount_issued);
             return $transaction->fresh();
         } catch (Exception $e) {
             DB::rollBack();
@@ -400,4 +405,123 @@ class PettyCashService
         $path = $file->storeAs('petty-cash/receipts', $fileName, 'public');
         return $path;
     }
+
+    private function getCurrentBalanceFromRecords(): float
+{
+    // Try to get balance from most recent transaction
+    $latestTransaction = PettyCashTransaction::orderBy('created_at', 'desc')->first();
+    $latestFund = PettyCashFund::where('status', PettyCashFund::STATUS_APPROVED)
+                               ->orderBy('created_at', 'desc')
+                               ->first();
+
+    if (!$latestTransaction && !$latestFund) {
+        return 0; // No records yet
+    }
+
+    if (!$latestTransaction) {
+        return $latestFund->balance_after ?? $this->getAvailableBalance();
+    }
+
+    if (!$latestFund) {
+        return $latestTransaction->balance_after ?? $this->getAvailableBalance();
+    }
+
+    // Return balance from the most recent record
+    $mostRecent = $latestTransaction->created_at > $latestFund->created_at 
+        ? $latestTransaction 
+        : $latestFund;
+    
+    return $mostRecent->balance_after ?? $this->getAvailableBalance();
+}
+
+/**
+ * Update balance tracking for transaction
+ */
+private function updateTransactionBalance($transaction, $balanceChange = null)
+{
+    $currentBalance = $this->getCurrentBalanceFromRecords();
+    
+    if ($balanceChange === null) {
+        // Calculate balance change based on transaction status
+        switch ($transaction->status) {
+            case PettyCashTransaction::STATUS_ISSUED:
+                $balanceChange = -$transaction->amount_issued;
+                break;
+            case PettyCashTransaction::STATUS_SETTLED:
+            case PettyCashTransaction::STATUS_APPROVED:
+                $balanceChange = -$transaction->amount_issued + ($transaction->amount_returned ?? 0);
+                break;
+            case PettyCashTransaction::STATUS_CANCELLED:
+                $balanceChange = 0; // Cancelled transactions restore balance
+                break;
+            default:
+                $balanceChange = 0;
+        }
+    }
+
+    $balanceBefore = $currentBalance - $balanceChange;
+    $balanceAfter = $currentBalance;
+
+    $transaction->update([
+        'balance_before' => $balanceBefore,
+        'balance_after' => $balanceAfter,
+        'balance_change' => $balanceChange
+    ]);
+}
+
+/**
+ * Update balance tracking for fund
+ */
+private function updateFundBalance($fund)
+{
+    $currentBalance = $this->getCurrentBalanceFromRecords();
+    $balanceBefore = $currentBalance - $fund->amount;
+    
+    $fund->update([
+        'balance_before' => $balanceBefore,
+        'balance_after' => $currentBalance
+    ]);
+}
+
+
+
+/**
+ * Get transactions with balance information (new method to add)
+ */
+public function getTransactionsWithBalance(array $filters = [], int $perPage = null)
+{
+    $query = PettyCashTransaction::with(['employee', 'issuer', 'approver']);
+
+    // Apply your existing filters
+    if (!empty($filters['search'])) {
+        $search = $filters['search'];
+        $query->where(function ($q) use ($search) {
+            $q->where('transaction_reference', 'like', "%{$search}%")
+              ->orWhere('description', 'like', "%{$search}%")
+              ->orWhereHas('employee', function ($empQuery) use ($search) {
+                  $empQuery->where('full_name', 'like', "%{$search}%");
+              });
+        });
+    }
+
+    if (!empty($filters['status'])) {
+        $query->where('status', $filters['status']);
+    }
+
+    if (!empty($filters['employeeId'])) {
+        $query->where('employee_id', $filters['employeeId']);
+    }
+
+    if (!empty($filters['startDate'])) {
+        $query->whereDate('created_at', '>=', $filters['startDate']);
+    }
+
+    if (!empty($filters['endDate'])) {
+        $query->whereDate('created_at', '<=', $filters['endDate']);
+    }
+
+    $query->orderBy($filters['sort_by'] ?? 'created_at', $filters['sort_order'] ?? 'desc');
+
+    return $perPage ? $query->paginate($perPage) : $query->get();
+}
 }
