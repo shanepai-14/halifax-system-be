@@ -121,7 +121,7 @@ class SaleService
         return Sale::with([
             'customer', 
             'user', 
-            'items.product',
+            'items.product.category',
             'returns.items',
             'payments'
         ])->findOrFail($id);
