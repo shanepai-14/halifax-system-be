@@ -281,7 +281,7 @@ class PurchaseOrderService
                     'purchase_order_id' => $newStatus ,
                     'purchase_order_number' => $currentStatus
                 ]);
-                $this->processPurchaseOrderCompletion($purchaseOrder);
+                // $this->processPurchaseOrderCompletion($purchaseOrder);
             }
 
             DB::commit();
