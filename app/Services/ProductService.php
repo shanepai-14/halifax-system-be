@@ -76,10 +76,46 @@ class ProductService
 
     public function getAllProducts(): Collection
     {
-        return Product::with(['category', 'attributes'])->get();
+        return Product::with(['category', 'attribute'])->get();
     }
 
-  public function createProduct(array $data): Product
+//   public function createProduct(array $data): Product
+//     {
+//         try {
+//             DB::beginTransaction();
+
+//             $category = ProductCategory::findOrFail($data['product_category_id']);
+            
+//             // Generate product code
+//             $productCode = $this->generateProductCode($category, $data);
+
+//             // Create product with generated code
+//             $product = Product::create([
+//                 'product_code' => $productCode,
+//                 'product_name' => $data['product_name'],
+//                 'product_category_id' => $data['product_category_id'],
+//                 'reorder_level' => $data['reorder_level']
+//             ]);
+
+//             // Attach attributes if provided
+//             if (isset($data['attributes']) && is_array($data['attributes'])) {
+//                 foreach ($data['attributes'] as $attribute) {
+//                     $product->attributes()->attach($attribute['attribute_id'], [
+//                         'value' => $attribute['value']
+//                     ]);
+//                 }
+//             }
+
+//             DB::commit();
+//             return $product->load(['category', 'attributes']);
+//         } catch (Exception $e) {
+//             DB::rollBack();
+//             throw $e;
+//         }
+//     }
+
+    
+    public function createProduct(array $data): Product
     {
         try {
             DB::beginTransaction();
@@ -93,21 +129,14 @@ class ProductService
             $product = Product::create([
                 'product_code' => $productCode,
                 'product_name' => $data['product_name'],
+                'product_type'=> $data['product_type'],
                 'product_category_id' => $data['product_category_id'],
+                'attribute_id' => $data['attribute_id'] ?? null, // Single attribute
                 'reorder_level' => $data['reorder_level']
             ]);
 
-            // Attach attributes if provided
-            if (isset($data['attributes']) && is_array($data['attributes'])) {
-                foreach ($data['attributes'] as $attribute) {
-                    $product->attributes()->attach($attribute['attribute_id'], [
-                        'value' => $attribute['value']
-                    ]);
-                }
-            }
-
             DB::commit();
-            return $product->load(['category', 'attributes']);
+            return $product->load(['category', 'attribute']);
         } catch (Exception $e) {
             DB::rollBack();
             throw $e;
@@ -140,6 +169,40 @@ class ProductService
         return $query->get();
     }
 
+    // public function updateProduct(Product $product, array $data): Product
+    // {
+    //     try {
+    //         DB::beginTransaction();
+
+    //         // If category is changed, generate new product code
+    //         if (isset($data['product_category_id']) && $data['product_category_id'] != $product->product_category_id) {
+    //             $category = ProductCategory::findOrFail($data['product_category_id']);
+    //             $data['product_code'] = $this->generateProductCode($category, $data);
+    //         }
+
+    //         $product->update([
+    //             'product_code' => $data['product_code'] ?? $product->product_code,
+    //             'product_name' => $data['product_name'] ?? $product->product_name,
+    //             'product_category_id' => $data['product_category_id'] ?? $product->product_category_id,
+    //             'reorder_level' => $data['reorder_level'] ?? $product->reorder_level
+    //         ]);
+
+    //         if (isset($data['attributes']) && is_array($data['attributes'])) {
+    //             $attributes = collect($data['attributes'])->mapWithKeys(function ($item) {
+    //                 return [$item['attribute_id'] => ['value' => $item['value']]];
+    //             });
+                
+    //             $product->attributes()->sync($attributes);
+    //         }
+
+    //         DB::commit();
+    //         return $product->load(['category', 'attributes']);
+    //     } catch (Exception $e) {
+    //         DB::rollBack();
+    //         throw $e;
+    //     }
+    // }
+
     public function updateProduct(Product $product, array $data): Product
     {
         try {
@@ -154,20 +217,14 @@ class ProductService
             $product->update([
                 'product_code' => $data['product_code'] ?? $product->product_code,
                 'product_name' => $data['product_name'] ?? $product->product_name,
+                'product_type'=> $data['product_type'] ?? $product->product_type,
                 'product_category_id' => $data['product_category_id'] ?? $product->product_category_id,
+                'attribute_id' => $data['attribute_id'] ?? $product->attribute_id, // Single attribute
                 'reorder_level' => $data['reorder_level'] ?? $product->reorder_level
             ]);
 
-            if (isset($data['attributes']) && is_array($data['attributes'])) {
-                $attributes = collect($data['attributes'])->mapWithKeys(function ($item) {
-                    return [$item['attribute_id'] => ['value' => $item['value']]];
-                });
-                
-                $product->attributes()->sync($attributes);
-            }
-
             DB::commit();
-            return $product->load(['category', 'attributes']);
+            return $product->load(['category', 'attribute']);
         } catch (Exception $e) {
             DB::rollBack();
             throw $e;

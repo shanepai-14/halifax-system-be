@@ -19,6 +19,8 @@ class Product extends Model
         'product_code',
         'product_name',
         'product_category_id',
+        'attribute_id',
+        'product_type',
         'reorder_level',
         'product_image',
         'quantity',
@@ -34,6 +36,12 @@ class Product extends Model
     {
         return $this->belongsTo(ProductCategory::class, 'product_category_id');
     }
+
+        public function attribute(): BelongsTo
+    {
+        return $this->belongsTo(Attribute::class, 'attribute_id');
+    }
+
 
     public function attributes(): BelongsToMany
     {

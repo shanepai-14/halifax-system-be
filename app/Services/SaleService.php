@@ -122,6 +122,7 @@ class SaleService
             'customer', 
             'user', 
             'items.product.category',
+            'items.product.attribute',
             'returns.items',
             'payments'
         ])->findOrFail($id);

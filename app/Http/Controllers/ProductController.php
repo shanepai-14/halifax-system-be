@@ -42,9 +42,7 @@ class ProductController extends Controller
                 'product_category_id' => 'required|exists:product_categories,id',
                 'reorder_level' => 'required|integer|min:0',
                 'product_type' => 'required|string|max:10',
-                'attributes' => 'sometimes|array',
-                'attributes.*.attribute_id' => 'required|exists:attributes,id',
-                'attributes.*.value' => 'required|numeric'
+                'attribute_id' => 'sometimes|integer',
             ]);
 
             $product = $this->productService->createProduct($validated);
@@ -85,10 +83,9 @@ class ProductController extends Controller
             $validated = $request->validate([
                 'product_name' => 'sometimes|required|string|max:100',
                 'product_category_id' => 'sometimes|required|exists:product_categories,id',
+                'product_type' => 'required|string|max:10',
+                'attribute_id' => 'sometimes|nullable|exists:attributes,id', // Single attribute
                 'reorder_level' => 'sometimes|required|integer|min:0',
-                'attributes' => 'sometimes|array',
-                'attributes.*.attribute_id' => 'required|exists:attributes,id',
-                'attributes.*.value' => 'required|numeric'
             ]);
 
             $updatedProduct = $this->productService->updateProduct($product, $validated);
