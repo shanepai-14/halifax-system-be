@@ -76,7 +76,13 @@ class ProductService
 
     public function getAllProducts(): Collection
     {
-        return Product::with(['category', 'attribute'])->get();
+        return Product::with(['category', 'attribute', 'inventory'])
+            ->get()
+            ->map(function ($product) {
+                // Add inventory quantity to the product data
+                $product->inventory_quantity = $product->inventory ? $product->inventory->quantity : 0;
+                return $product;
+            });
     }
 
 //   public function createProduct(array $data): Product
