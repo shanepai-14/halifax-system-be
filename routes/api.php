@@ -176,6 +176,7 @@ Route::post('/login', [AuthController::class, 'login']);
                 Route::put('/{id}/cancel', [SaleController::class, 'cancel']);
                 Route::put('/{id}/deliver', [SaleController::class, 'markAsDelivered']);
                 Route::get('/customers/{customerId}/purchase-history', [SaleController::class, 'getCustomerPurchaseHistory']);
+                Route::patch('/{id}/delivery-date', [SaleController::class, 'updateDeliveryDate']);
             });
             
             // Sale returns routes

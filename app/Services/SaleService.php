@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Log;
+use Carbon\Carbon;
 use Exception;
 
 class SaleService
@@ -200,8 +201,8 @@ class SaleService
                 'status' => Sale::STATUS_PENDING,
                 'customer_type' => $data['customer_type'] ?? Sale::TYPE_REGULAR,
                 'payment_method' => $data['payment_method'] ?? Sale::PAYMENT_CASH,
-                'order_date' => $data['order_date'] ?? now(),
-                'delivery_date' => $data['delivery_date'] ?? null,
+                'order_date' => Carbon::parse($data['order_date'])->format('Y-m-d'),     
+                'delivery_date' => Carbon::parse($data['delivery_date'])->format('Y-m-d'),
                 'address' => $data['address'] ?? null,
                 'city' => $data['city'] ?? null,
                 'phone' => $data['phone'] ?? null,
@@ -767,6 +768,19 @@ class SaleService
         return $sale;
     }
     
+    public function updateDeliveryDate(int $id, string $deliveryDate): Sale
+    {
+        $sale = $this->getSaleById($id);
+        
+        // Optional: Check if sale can be updated (not cancelled, completed, etc.)
+        if (in_array($sale->status, ['cancelled', 'completed', 'returned'])) {
+            throw new Exception('Cannot update delivery date for this sale status');
+        }
+        
+        $sale->update(['delivery_date' => $deliveryDate]);
+        
+        return $sale;
+    }
     /**
      * Get sales statistics
      *

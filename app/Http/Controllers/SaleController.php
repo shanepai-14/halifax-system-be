@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Services\SaleService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Validation\ValidationException;
 use Exception;
 
 class SaleController extends Controller
@@ -281,6 +282,35 @@ class SaleController extends Controller
             return response()->json([
                 'status' => 'error',
                 'message' => 'Error marking sale as delivered',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+        public function updateDeliveryDate(Request $request, int $id): JsonResponse
+    {
+        try {
+            $request->validate([
+                'delivery_date' => 'required|date|after_or_equal:today'
+            ]);
+
+            $sale = $this->saleService->updateDeliveryDate($id, $request->delivery_date);
+
+            return response()->json([
+                'status' => 'success',
+                'data' => $sale,
+                'message' => 'Delivery date updated successfully'
+            ]);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Validation failed',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Error updating delivery date',
                 'error' => $e->getMessage()
             ], 500);
         }

@@ -36,8 +36,6 @@ class Sale extends Model
     ];
 
     protected $casts = [
-        'order_date' => 'datetime',
-        'delivery_date' => 'datetime',
         'cogs' => 'decimal:2',
         'profit' => 'decimal:2',
         'total' => 'decimal:2',
