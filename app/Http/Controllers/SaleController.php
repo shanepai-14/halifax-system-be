@@ -79,6 +79,8 @@ class SaleController extends Controller
                 'term_days' => 'nullable|numeric|min:0',
                 'amount_received' => 'nullable|numeric|min:0',
                 'change' => 'nullable|numeric|min:0',
+                'delivery_fee' => 'nullable|numeric|min:0',
+                'cutting_charges' => 'nullable|numeric|min:0',
                 'items' => 'required|array|min:1',
                 'items.*.product_id' => 'required|exists:products,id',
                 'items.*.quantity' => 'required|integer|min:1',

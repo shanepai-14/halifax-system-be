@@ -30,7 +30,9 @@ class Sale extends Model
         'change',
         'remarks',
         'is_delivered',
-        'term_days'
+        'term_days',
+        'delivery_fee',
+        'cutting_charges'
     ];
 
     protected $casts = [

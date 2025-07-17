@@ -190,7 +190,8 @@ class SaleService
             $data['cogs'] = 0;
             $data['profit'] = 0;
             $data['total'] = 0;
-            
+            $delivery_fee = $data['delivery_fee'] ?? 0;
+            $cutting_charges =  $data['cutting_charges'] ?? 0;
             // Create the sale
             $sale = Sale::create([
                 'invoice_number' => $data['invoice_number'],
@@ -209,11 +210,17 @@ class SaleService
                 'change' => $data['change'] ?? 0,
                 'is_delivered' => false,
                 'term_days' => $data['term_days'] ?? 0,
+                'delivery_fee' => $delivery_fee,
+                'cutting_charges' => $cutting_charges,
+
             ]);
+
+            
+            $other_charges = $delivery_fee + $cutting_charges;
             
             // Handle sale items
             if (!empty($data['items']) && is_array($data['items'])) {
-                $this->processSaleItems($sale, $data['items']);
+                $this->processSaleItems($sale, $data['items'], $other_charges);
             }
             
             // Handle payment if amount received > 0
@@ -304,7 +311,7 @@ class SaleService
     //     ]);
     // }
 
-    protected function processSaleItems(Sale $sale, array $items): void
+    protected function processSaleItems(Sale $sale, array $items, $other_charges = 0): void
     {
         $totalCogs = 0;
         $totalSold = 0;
@@ -397,11 +404,11 @@ class SaleService
         }
         
         // Update sale totals
-        $profit = $totalSold - $totalCogs;
+        $profit = ($totalSold + $other_charges) - $totalCogs;
         $sale->update([
             'cogs' => $totalCogs,
             'profit' => $profit,
-            'total' => $totalSold
+            'total' => $totalSold + $other_charges,
         ]);
     }
     
