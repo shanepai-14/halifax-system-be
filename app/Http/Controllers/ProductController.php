@@ -130,25 +130,44 @@ class ProductController extends Controller
     }
 
     public function uploadImage(Request $request, string $id): JsonResponse
-{
-    try {
-        $validated = $request->validate([
-            'product_image' => 'required|file|image|max:5120', // 5MB max
-        ]);
+    {
+        try {
+            $validated = $request->validate([
+                'product_image' => 'required|file|image|max:5120', // 5MB max
+            ]);
 
-        $product = $this->productService->uploadProductImage($id, $validated['product_image']);
+            $product = $this->productService->uploadProductImage($id, $validated['product_image']);
 
-        return response()->json([
-            'status' => 'success',
-            'data' => $product,
-            'message' => 'Product image uploaded successfully'
-        ]);
-    } catch (Exception $e) {
-        return response()->json([
-            'status' => 'error',
-            'message' => 'Error uploading product image',
-            'error' => $e->getMessage()
-        ], 500);
+            return response()->json([
+                'status' => 'success',
+                'data' => $product,
+                'message' => 'Product image uploaded successfully'
+            ]);
+        } catch (Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Error uploading product image',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
-}
+
+    public function getProductDeliveryReports(int $productId): JsonResponse
+    {
+         try {
+            $reports = $this->productService->getProductDeliveryReports($productId);
+
+            return response()->json([
+                'success' => true,
+                'data' => $reports
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch product delivery reports',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
 }

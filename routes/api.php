@@ -59,6 +59,7 @@ Route::post('/login', [AuthController::class, 'login']);
         Route::apiResource('products', ProductController::class);
         Route::apiResource('product-categories', ProductCategoryController::class);
         Route::apiResource('expenses', ExpenseController::class);
+        Route::get('/products/{id}/delivery-reports', [ProductController::class, 'getProductDeliveryReports']);
         Route::post('products/{id}/image', [ProductController::class, 'uploadImage']);
 
 

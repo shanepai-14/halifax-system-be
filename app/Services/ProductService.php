@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Product;
+use App\Models\Sale;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use App\Models\ProductCategory;
@@ -22,15 +23,56 @@ class ProductService
         'custom' => 'C',    // Custom orders
     ];
 
-    public function getProductById(string $id): Product
-{
-    try {
-        return Product::with(['category', 'attributes'])
-            ->findOrFail($id);
-    } catch (ModelNotFoundException $e) {
-        throw new Exception("Product with ID {$id} not found");
+    public function getProductDeliveryReports(int $productId): array
+    {
+        // Validate product exists
+        $product = Product::findOrFail($productId);
+
+        // Get all sales records for this product
+        $reports = DB::table('sale_items')
+            ->select([
+                'sale_items.id as sale_item_id',
+                'sale_items.quantity',
+                'sale_items.sold_price',
+                'sale_items.total_sold_price as total',
+                'sales.id as sale_id',
+                'sales.invoice_number as dr_number',
+                'sales.order_date as date_sold',
+                'sales.delivery_date',
+                'customers.customer_name',
+                'sale_items.distribution_price'
+            ])
+            ->join('sales', 'sale_items.sale_id', '=', 'sales.id')
+            ->join('products', 'sale_items.product_id', '=', 'products.id')
+            ->leftJoin('customers', 'sales.customer_id', '=', 'customers.id')
+            ->where('sale_items.product_id', $productId)
+            ->where('sales.status', '!=', Sale::STATUS_CANCELLED)
+            ->orderBy('sales.order_date', 'desc')
+            ->orderBy('sales.id', 'desc')
+            ->get()
+            ->map(function ($item) {
+                return [
+                    'dr_number' => $item->dr_number,
+                    'date_sold' => $item->date_sold,
+                    'customer_name' => $item->customer_name ?? 'Walk-in Customer',
+                    'sold_price' => (float) $item->sold_price,
+                    'distribution_price' => (float) ($item->distribution_price ?? 0),
+                    'quantity' => (int) $item->quantity,
+                ];
+            });
+
+        return $reports->toArray();
     }
-}
+
+    public function getProductById(string $id): Product
+    {
+        try {
+            return Product::with(['category', 'attributes'])
+                ->findOrFail($id);
+        } catch (ModelNotFoundException $e) {
+            throw new Exception("Product with ID {$id} not found");
+        }
+    }
 
     protected function generateProductCode(ProductCategory $category, array $data): string
     {
