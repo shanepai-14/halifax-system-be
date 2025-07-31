@@ -230,4 +230,12 @@ class PrintController extends Controller
         }
     }
 
+        public function findWorkingMethod(): JsonResponse
+    {
+        $service = new \App\Services\CredentialPrinterService();
+        $result = $service->findWorkingMethod();
+        
+        return response()->json($result);
+    }
+
 }

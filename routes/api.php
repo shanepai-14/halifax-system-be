@@ -41,6 +41,7 @@ Route::prefix('print')->group(function () {
     Route::post('/invoice', [PrintController::class, 'printInvoice']);
     Route::post('/delivery-receipt', [PrintController::class, 'printDeliveryReceipt']);
     Route::post('/text', [PrintController::class, 'printText']);
+    Route::get('/find-method', [PrintController::class, 'findWorkingMethod']);
 });
     
     Route::middleware('auth:sanctum')->group(function () {
