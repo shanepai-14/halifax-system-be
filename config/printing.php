@@ -1,16 +1,18 @@
 <?php
 
-// config/printing.php
+// config/printing.php - Updated configuration
 return [
-    'default_printer' => env('DEFAULT_PRINTER', 'EPSON LX-310'),
+    // Your specific printer name from Windows
+    'default_printer' => env('DEFAULT_PRINTER', 'EPSON LX-310 on Computer02'),
     
-    // Network printer path (if shared)
-    'network_path' => env('PRINTER_NETWORK_PATH', null), // e.g., '\\\\COMPUTER-NAME\\EPSON_LX310'
+    // Use Windows Print Connector (recommended for your setup)
+    'use_windows_connector' => env('USE_WINDOWS_CONNECTOR', true),
     
-    // Local printer share name
-    'share_name' => env('PRINTER_SHARE_NAME', null), // e.g., 'EPSON_LX310'
+    // Alternative: Network printing (if printer has IP)
+    'network_ip' => env('PRINTER_NETWORK_IP', null), // e.g., '192.168.0.100'
+    'network_port' => env('PRINTER_NETWORK_PORT', 9100),
     
-    // LPT port (for direct connection)
+    // Alternative: LPT port
     'lpt_port' => env('PRINTER_LPT_PORT', 'LPT1'),
     
     // Print job settings
@@ -18,8 +20,7 @@ return [
     'queue_name' => env('PRINT_QUEUE_NAME', 'printing'),
     'max_retries' => env('PRINT_MAX_RETRIES', 3),
     
-    // Printer settings
-    'default_width' => 80,
-    'default_quality' => 'nlq', // draft, nlq
-    'default_line_spacing' => 24,
+    // Default formatting
+    'default_width' => 48, // characters per line for ESC/POS
+    'form_feed' => true,
 ];
