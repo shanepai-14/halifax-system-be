@@ -27,12 +27,21 @@ use App\Http\Controllers\UserController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\BracketPricingController;
 use App\Http\Controllers\ReportsController;
+use App\Http\Controllers\PrintController;
+
 
 
 
 
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
+
+Route::prefix('print')->group(function () {
+    Route::get('/test', [PrintController::class, 'testPrinter']);
+    Route::post('/invoice', [PrintController::class, 'printInvoice']);
+    Route::post('/delivery-receipt', [PrintController::class, 'printDeliveryReceipt']);
+    Route::post('/text', [PrintController::class, 'printText']);
+});
     
     Route::middleware('auth:sanctum')->group(function () {
         Route::post('/logout', [AuthController::class, 'logout']);
@@ -262,40 +271,42 @@ Route::post('/login', [AuthController::class, 'login']);
         });
         });
 
+
+
            Route::prefix('reports')->name('reports.')->group(function () {
         // Dashboard and overview
-        Route::get('/dashboard', [ReportsController::class, 'dashboard'])->name('dashboard');
-        Route::get('/chart-data', [ReportsController::class, 'getChartData'])->name('chart-data');
-        
-        // Period-based reports
-        Route::get('/monthly', [ReportsController::class, 'getMonthlyReport'])->name('monthly');
-        Route::get('/yearly', [ReportsController::class, 'getYearlyReport'])->name('yearly');
-        Route::get('/daily', [ReportsController::class, 'getDailyReport'])->name('daily');
-        
-        // Breakdown reports
-        Route::get('/payment-methods', [ReportsController::class, 'getPaymentMethodsBreakdown'])->name('payment-methods');
-        Route::get('/customer-types', [ReportsController::class, 'getCustomerTypesBreakdown'])->name('customer-types');
-        
-        // Trend analysis
-        Route::get('/profit-trends', [ReportsController::class, 'getProfitTrends'])->name('profit-trends');
-        Route::get('/performance-metrics', [ReportsController::class, 'getPerformanceMetrics'])->name('performance-metrics');
-        
-        // Forecasting
-        Route::get('/forecast', [ReportsController::class, 'getForecastData'])->name('forecast');
-        
-        // Advanced analytics
-        Route::get('/advanced-analytics', [ReportsController::class, 'getAdvancedAnalytics'])->name('advanced-analytics');
-        Route::get('/top-performing', [ReportsController::class, 'getTopPerformingPeriods'])->name('top-performing');
-        Route::get('/summary-statistics', [ReportsController::class, 'getSummaryStatistics'])->name('summary-statistics');
-        
-        // Export functionality
-        Route::get('/export', [ReportsController::class, 'exportSummaryData'])->name('export');
-        
-        // System maintenance (admin only)
-        Route::middleware('role:admin')->group(function () {
-            Route::post('/rebuild-summaries', [ReportsController::class, 'rebuildSummaries'])->name('rebuild-summaries');
-            Route::get('/health-check', [ReportsController::class, 'getHealthCheck'])->name('health-check');
-        });
+                Route::get('/dashboard', [ReportsController::class, 'dashboard'])->name('dashboard');
+                Route::get('/chart-data', [ReportsController::class, 'getChartData'])->name('chart-data');
+                
+                // Period-based reports
+                Route::get('/monthly', [ReportsController::class, 'getMonthlyReport'])->name('monthly');
+                Route::get('/yearly', [ReportsController::class, 'getYearlyReport'])->name('yearly');
+                Route::get('/daily', [ReportsController::class, 'getDailyReport'])->name('daily');
+                
+                // Breakdown reports
+                Route::get('/payment-methods', [ReportsController::class, 'getPaymentMethodsBreakdown'])->name('payment-methods');
+                Route::get('/customer-types', [ReportsController::class, 'getCustomerTypesBreakdown'])->name('customer-types');
+                
+                // Trend analysis
+                Route::get('/profit-trends', [ReportsController::class, 'getProfitTrends'])->name('profit-trends');
+                Route::get('/performance-metrics', [ReportsController::class, 'getPerformanceMetrics'])->name('performance-metrics');
+                
+                // Forecasting
+                Route::get('/forecast', [ReportsController::class, 'getForecastData'])->name('forecast');
+                
+                // Advanced analytics
+                Route::get('/advanced-analytics', [ReportsController::class, 'getAdvancedAnalytics'])->name('advanced-analytics');
+                Route::get('/top-performing', [ReportsController::class, 'getTopPerformingPeriods'])->name('top-performing');
+                Route::get('/summary-statistics', [ReportsController::class, 'getSummaryStatistics'])->name('summary-statistics');
+                
+                // Export functionality
+                Route::get('/export', [ReportsController::class, 'exportSummaryData'])->name('export');
+                
+                // System maintenance (admin only)
+                Route::middleware('role:admin')->group(function () {
+                    Route::post('/rebuild-summaries', [ReportsController::class, 'rebuildSummaries'])->name('rebuild-summaries');
+                    Route::get('/health-check', [ReportsController::class, 'getHealthCheck'])->name('health-check');
+                });
     });
 
              Route::post('attachments/{attachmentId}', [AttachmentController::class, 'deleteAttachment']);
