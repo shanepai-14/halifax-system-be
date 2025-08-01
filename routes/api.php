@@ -42,6 +42,8 @@ Route::prefix('print')->group(function () {
     Route::post('/delivery-receipt', [PrintController::class, 'printDeliveryReceipt']);
     Route::post('/text', [PrintController::class, 'printText']);
     Route::get('/find-method', [PrintController::class, 'findWorkingMethod']);
+    Route::get('/lpt-status', [PrintController::class, 'checkLptStatus']);
+    
 });
     
     Route::middleware('auth:sanctum')->group(function () {
