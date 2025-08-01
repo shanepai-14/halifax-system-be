@@ -19,8 +19,8 @@ class AppServiceProvider extends ServiceProvider
             return new \App\Services\SalesSummaryService();
         });
 
-        $this->app->singleton(\App\Services\DotMatrixPrinterService::class, function ($app) {
-        return new \App\Services\DotMatrixPrinterService();
+        $this->app->singleton(\App\Services\DirectLptPrinterService::class, function ($app) {
+        return new \App\Services\DirectLptPrinterService();
     });
     }
 

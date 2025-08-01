@@ -2,48 +2,42 @@
 
 namespace App\Http\Controllers;
 
-use App\Services\EscPosPrinterService;
-use App\Jobs\PrintDocumentJob;
+use App\Services\DirectLptPrinterService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
 
 class PrintController extends Controller
 {
-    private EscPosPrinterService $printer;
+    private DirectLptPrinterService $printer;
 
-    public function __construct(EscPosPrinterService $printer)
+    public function __construct(DirectLptPrinterService $printer)
     {
         $this->printer = $printer;
     }
 
     /**
-     * Test printer connection
+     * Test printer using direct LPT method
      */
     public function testPrinter(): JsonResponse
     {
         try {
-            $success = $this->printer->testPrinter();
+            $result = $this->printer->testPrinter();
             
-            return response()->json([
-                'success' => $success,
-                'message' => $success ? 'Printer test successful - Check your printer!' : 'Printer test failed',
-                'printer' => config('printing.default_printer')
-            ]);
+            return response()->json($result, $result['success'] ? 200 : 500);
             
         } catch (\Exception $e) {
             Log::error('Printer test error: ' . $e->getMessage());
             
             return response()->json([
                 'success' => false,
-                'message' => 'Printer test failed: ' . $e->getMessage(),
-                'printer' => config('printing.default_printer')
+                'message' => 'Printer test failed: ' . $e->getMessage()
             ], 500);
         }
     }
 
     /**
-     * Print invoice using ESC/POS
+     * Print invoice using direct LPT
      */
     public function printInvoice(Request $request): JsonResponse
     {
@@ -62,8 +56,9 @@ class PrintController extends Controller
             
             return response()->json([
                 'success' => $success,
-                'message' => $success ? 'Invoice printed successfully' : 'Invoice printing failed',
-                'data' => $validated
+                'message' => $success ? 'Invoice sent to printer - Check EPSON LX-310!' : 'Invoice printing failed',
+                'data' => $validated,
+                'printer_method' => 'Direct LPT'
             ]);
 
         } catch (\Exception $e) {
@@ -77,7 +72,7 @@ class PrintController extends Controller
     }
 
     /**
-     * Print delivery receipt using ESC/POS
+     * Print delivery receipt using direct LPT
      */
     public function printDeliveryReceipt(Request $request): JsonResponse
     {
@@ -96,7 +91,8 @@ class PrintController extends Controller
             
             return response()->json([
                 'success' => $success,
-                'message' => $success ? 'Delivery receipt printed successfully' : 'Delivery receipt printing failed'
+                'message' => $success ? 'Delivery receipt sent to printer!' : 'Delivery receipt printing failed',
+                'printer_method' => 'Direct LPT'
             ]);
 
         } catch (\Exception $e) {
@@ -110,63 +106,29 @@ class PrintController extends Controller
     }
 
     /**
-     * Print simple receipt
-     */
-    public function printReceipt(Request $request): JsonResponse
-    {
-        try {
-            $validated = $request->validate([
-                'receipt_no' => 'required|string',
-                'store_name' => 'nullable|string',
-                'store_address' => 'nullable|string',
-                'date' => 'nullable|string',
-                'items' => 'required|array',
-                'items.*.name' => 'required|string',
-                'items.*.qty' => 'required|numeric',
-                'items.*.price' => 'required|numeric',
-            ]);
-
-            $success = $this->printer->printReceipt($validated);
-            
-            return response()->json([
-                'success' => $success,
-                'message' => $success ? 'Receipt printed successfully' : 'Receipt printing failed'
-            ]);
-
-        } catch (\Exception $e) {
-            Log::error('Receipt printing error: ' . $e->getMessage());
-            
-            return response()->json([
-                'success' => false,
-                'message' => 'Receipt printing failed: ' . $e->getMessage()
-            ], 500);
-        }
-    }
-
-    /**
-     * Print custom text with formatting
+     * Print raw text using direct LPT
      */
     public function printText(Request $request): JsonResponse
     {
         try {
             $validated = $request->validate([
                 'content' => 'required|string',
-                'formatting' => 'nullable|array',
-                'formatting.center' => 'nullable|boolean',
-                'formatting.bold' => 'nullable|boolean',
-                'formatting.double_width' => 'nullable|boolean',
-                'formatting.double_height' => 'nullable|boolean',
-                'formatting.feed' => 'nullable|boolean',
+                'width' => 'nullable|integer|min:40|max:132',
+                'add_control_codes' => 'nullable|boolean'
             ]);
 
-            $success = $this->printer->printFormattedText(
-                $validated['content'],
-                $validated['formatting'] ?? []
-            );
+            $options = [
+                'width' => $validated['width'] ?? 80,
+                'add_control_codes' => $validated['add_control_codes'] ?? true
+            ];
+
+            $success = $this->printer->printText($validated['content'], $options);
             
             return response()->json([
                 'success' => $success,
-                'message' => $success ? 'Text printed successfully' : 'Text printing failed'
+                'message' => $success ? 'Text sent to printer!' : 'Text printing failed',
+                'content_length' => strlen($validated['content']),
+                'options' => $options
             ]);
 
         } catch (\Exception $e) {
@@ -180,62 +142,68 @@ class PrintController extends Controller
     }
 
     /**
-     * Print barcode
+     * Check LPT port status and diagnostics
      */
-    public function printBarcode(Request $request): JsonResponse
+    public function checkLptStatus(): JsonResponse
     {
         try {
-            $validated = $request->validate([
-                'data' => 'required|string',
-                'type' => 'nullable|integer'
-            ]);
-
-            $success = $this->printer->printBarcode($validated['data'], $validated['type'] ?? null);
+            $status = $this->printer->checkLptStatus();
             
             return response()->json([
-                'success' => $success,
-                'message' => $success ? 'Barcode printed successfully' : 'Barcode printing failed'
+                'success' => true,
+                'status' => $status,
+                'message' => 'LPT port status retrieved'
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Barcode printing error: ' . $e->getMessage());
-            
             return response()->json([
                 'success' => false,
-                'message' => 'Barcode printing failed: ' . $e->getMessage()
+                'message' => 'Failed to check LPT status: ' . $e->getMessage()
             ], 500);
         }
     }
 
     /**
-     * Get printer status
+     * Intensive printer test - sends multiple test patterns
      */
-    public function getPrinterStatus(): JsonResponse
+    public function intensiveTest(): JsonResponse
     {
         try {
-            $config = config('printing');
+            $results = [];
+            
+            // Test 1: Basic text
+            $basicText = "BASIC TEST - " . date('H:i:s') . "\r\nThis is a basic text test.\r\n\r\n";
+            $results['basic_test'] = $this->printer->printText($basicText);
+            
+            // Test 2: Special characters
+            $specialText = "SPECIAL CHARS: !@#$%^&*()_+-=[]{}|;:,.<>?\r\n";
+            $results['special_chars'] = $this->printer->printText($specialText);
+            
+            // Test 3: Line formatting
+            $lineTest = str_repeat("-", 80) . "\r\n";
+            $lineTest .= "Line formatting test\r\n";
+            $lineTest .= str_repeat("=", 80) . "\r\n";
+            $results['line_formatting'] = $this->printer->printText($lineTest);
+            
+            // Test 4: Form feed
+            $formFeedTest = "Form feed test\r\n\f";
+            $results['form_feed'] = $this->printer->printText($formFeedTest);
+            
+            $overallSuccess = !in_array(false, $results);
             
             return response()->json([
-                'printer_name' => $config['default_printer'],
-                'connector_type' => $config['use_windows_connector'] ? 'Windows' : 'Alternative',
-                'queue_enabled' => $config['queue_enabled'] ?? false,
-                'status' => 'configured'
+                'success' => $overallSuccess,
+                'message' => $overallSuccess ? 
+                    'Intensive test completed - Check your printer for multiple test prints!' : 
+                    'Some tests failed - Check logs',
+                'test_results' => $results
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
-                'status' => 'error',
-                'message' => $e->getMessage()
+                'success' => false,
+                'message' => 'Intensive test failed: ' . $e->getMessage()
             ], 500);
         }
     }
-
-        public function findWorkingMethod(): JsonResponse
-    {
-        $service = new \App\Services\CredentialPrinterService();
-        $result = $service->findWorkingMethod();
-        
-        return response()->json($result);
-    }
-
 }
