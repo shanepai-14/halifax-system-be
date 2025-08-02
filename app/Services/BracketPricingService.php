@@ -12,7 +12,7 @@ use Exception;
 class BracketPricingService
 {
     /**
-     * Create a price bracket with bracket items for a product
+     * Create a price bracket with multiple prices per tier
      *
      * @param int $productId
      * @param array $bracketData
@@ -35,9 +35,9 @@ class BracketPricingService
                 'created_by' => Auth::id()
             ]);
 
-            // Create bracket items
+            // Create bracket items (multiple prices per tier are supported)
             if (!empty($bracketData['bracket_items'])) {
-                foreach ($bracketData['bracket_items'] as $itemData) {
+                foreach ($bracketData['bracket_items'] as $index => $itemData) {
                     $this->validateBracketItemData($itemData);
                     
                     BracketItem::create([
@@ -46,7 +46,9 @@ class BracketPricingService
                         'max_quantity' => $itemData['max_quantity'] ?? null,
                         'price' => $itemData['price'],
                         'price_type' => $itemData['price_type'],
-                        'is_active' => $itemData['is_active'] ?? true
+                        'label' => $itemData['label'] ?? $this->generateDefaultLabel($itemData['price_type']),
+                        'is_active' => $itemData['is_active'] ?? true,
+                        'sort_order' => $itemData['sort_order'] ?? $index
                     ]);
                 }
             }
@@ -86,18 +88,50 @@ class BracketPricingService
                 'effective_to' => $bracketData['effective_to'] ?? $bracket->effective_to,
             ]);
 
-            // Handle bracket items if provided
+            // Handle bracket items
             if (isset($bracketData['bracket_items'])) {
-                $this->updateBracketItems($bracket, $bracketData['bracket_items']);
+                $existingItemIds = collect($bracketData['bracket_items'])
+                    ->pluck('id')
+                    ->filter()
+                    ->toArray();
+
+                // Delete items not in the update list
+                $bracket->bracketItems()
+                        ->whereNotIn('id', $existingItemIds)
+                        ->delete();
+
+                // Update or create items
+                foreach ($bracketData['bracket_items'] as $index => $itemData) {
+                    $this->validateBracketItemData($itemData);
+
+                    $itemAttributes = [
+                        'bracket_id' => $bracket->id,
+                        'min_quantity' => $itemData['min_quantity'],
+                        'max_quantity' => $itemData['max_quantity'] ?? null,
+                        'price' => $itemData['price'],
+                        'price_type' => $itemData['price_type'],
+                        'label' => $itemData['label'] ?? $this->generateDefaultLabel($itemData['price_type']),
+                        'is_active' => $itemData['is_active'] ?? true,
+                        'sort_order' => $itemData['sort_order'] ?? $index
+                    ];
+
+                    if (isset($itemData['id']) && $itemData['id']) {
+                        // Update existing item
+                        BracketItem::where('id', $itemData['id'])->update($itemAttributes);
+                    } else {
+                        // Create new item
+                        BracketItem::create($itemAttributes);
+                    }
+                }
             }
 
-            // If this bracket is now selected, activate it
+            // Handle bracket activation
             if ($bracket->is_selected) {
                 $this->activateBracket($bracket);
             }
 
             DB::commit();
-            return $bracket->load('bracketItems');
+            return $bracket->fresh()->load('bracketItems');
         } catch (Exception $e) {
             DB::rollBack();
             throw $e;
@@ -105,108 +139,7 @@ class BracketPricingService
     }
 
     /**
-     * Update bracket items for a bracket
-     *
-     * @param ProductPriceBracket $bracket
-     * @param array $itemsData
-     * @return void
-     * @throws Exception
-     */
-    protected function updateBracketItems(ProductPriceBracket $bracket, array $itemsData): void
-    {
-        $existingItemIds = [];
-
-        foreach ($itemsData as $itemData) {
-            if (isset($itemData['id'])) {
-                // Update existing item
-                $item = BracketItem::where('bracket_id', $bracket->id)
-                                  ->where('id', $itemData['id'])
-                                  ->firstOrFail();
-                
-                $item->update([
-                    'min_quantity' => $itemData['min_quantity'] ?? $item->min_quantity,
-                    'max_quantity' => $itemData['max_quantity'] ?? $item->max_quantity,
-                    'price' => $itemData['price'] ?? $item->price,
-                    'price_type' => $itemData['price_type'] ?? $item->price_type,
-                    'is_active' => $itemData['is_active'] ?? $item->is_active,
-                ]);
-
-                $existingItemIds[] = $item->id;
-            } else {
-                // Create new item
-                $this->validateBracketItemData($itemData);
-                
-                $item = BracketItem::create([
-                    'bracket_id' => $bracket->id,
-                    'min_quantity' => $itemData['min_quantity'],
-                    'max_quantity' => $itemData['max_quantity'] ?? null,
-                    'price' => $itemData['price'],
-                    'price_type' => $itemData['price_type'],
-                    'is_active' => $itemData['is_active'] ?? true
-                ]);
-
-                $existingItemIds[] = $item->id;
-            }
-        }
-
-        // Delete items that weren't included in the update
-        if (!empty($existingItemIds)) {
-            BracketItem::where('bracket_id', $bracket->id)
-                       ->whereNotIn('id', $existingItemIds)
-                       ->delete();
-        }
-    }
-
-    /**
-     * Activate a bracket (deactivate others for the same product)
-     *
-     * @param ProductPriceBracket $bracket
-     * @return void
-     */
-    public function activateBracket(ProductPriceBracket $bracket): void
-    {
-        // Deactivate other brackets for the same product
-        ProductPriceBracket::where('product_id', $bracket->product_id)
-                          ->where('id', '!=', $bracket->id)
-                          ->update(['is_selected' => false]);
-
-        // Ensure this bracket is selected
-        $bracket->update(['is_selected' => true]);
-
-        // Enable bracket pricing for this product
-        $bracket->product->update(['use_bracket_pricing' => true]);
-    }
-
-    /**
-     * Deactivate bracket pricing for a product
-     *
-     * @param int $productId
-     * @return bool
-     */
-    public function deactivateBracketPricing(int $productId): bool
-    {
-        $product = Product::findOrFail($productId);
-
-        try {
-            DB::beginTransaction();
-
-            // Deselect all brackets for this product
-            ProductPriceBracket::where('product_id', $productId)
-                              ->update(['is_selected' => false]);
-
-            // Disable bracket pricing
-            $product->update(['use_bracket_pricing' => false]);
-
-            DB::commit();
-            return true;
-        } catch (Exception $e) {
-            DB::rollBack();
-            throw $e;
-        }
-    }
-
-    /**
-     * Calculate price for quantity using the selected bracket
+     * Calculate price for specific quantity and price type (returns best price from multiple options)
      *
      * @param int $productId
      * @param int $quantity
@@ -215,17 +148,73 @@ class BracketPricingService
      */
     public function calculatePriceForQuantity(int $productId, int $quantity, string $priceType = 'regular'): ?float
     {
-        $product = Product::findOrFail($productId);
-        
-        if (!$product->use_bracket_pricing) {
-            return $product->getTraditionalPrice($priceType);
+        $activeBracket = ProductPriceBracket::where('product_id', $productId)
+            ->where('is_selected', true)
+            ->first();
+
+        if (!$activeBracket) {
+            return null;
         }
 
-        return ProductPriceBracket::getPriceForQuantity($productId, $quantity, $priceType);
+        // Get the best (lowest) price from all applicable options
+        $bestPriceItem = $activeBracket->bracketItems()
+            ->where('is_active', true)
+            ->where('price_type', $priceType)
+            ->where('min_quantity', '<=', $quantity)
+            ->where(function($q) use ($quantity) {
+                $q->whereNull('max_quantity')
+                  ->orWhere('max_quantity', '>=', $quantity);
+            })
+            ->orderBy('price', 'asc')
+            ->first();
+
+        return $bestPriceItem ? $bestPriceItem->price : null;
     }
 
     /**
-     * Get pricing breakdown for different quantities
+     * Get all available price options for a specific quantity and price type
+     *
+     * @param int $productId
+     * @param int $quantity
+     * @param string $priceType
+     * @return array
+     */
+    public function getAllPriceOptionsForQuantity(int $productId, int $quantity, string $priceType = 'regular'): array
+    {
+        $activeBracket = ProductPriceBracket::where('product_id', $productId)
+            ->where('is_selected', true)
+            ->first();
+
+        if (!$activeBracket) {
+            return [];
+        }
+
+        $priceOptions = $activeBracket->bracketItems()
+            ->where('is_active', true)
+            ->where('price_type', $priceType)
+            ->where('min_quantity', '<=', $quantity)
+            ->where(function($q) use ($quantity) {
+                $q->whereNull('max_quantity')
+                  ->orWhere('max_quantity', '>=', $quantity);
+            })
+            ->orderBy('sort_order', 'asc')
+            ->orderBy('price', 'asc')
+            ->get();
+
+        return $priceOptions->map(function($item) use ($quantity) {
+            return [
+                'id' => $item->id,
+                'label' => $item->label,
+                'price' => $item->price,
+                'total_price' => $item->price * $quantity,
+                'quantity_range' => $item->quantity_range,
+                'sort_order' => $item->sort_order
+            ];
+        })->toArray();
+    }
+
+    /**
+     * Get pricing breakdown for different quantities with multiple options
      *
      * @param int $productId
      * @param string $priceType
@@ -234,133 +223,27 @@ class BracketPricingService
      */
     public function getPricingBreakdown(int $productId, string $priceType = 'regular', array $quantities = [1, 5, 10, 25, 50, 100]): array
     {
-        $product = Product::findOrFail($productId);
-        
-        if (!$product->use_bracket_pricing) {
-            $traditionalPrice = $product->getTraditionalPrice($priceType);
-            $breakdown = [];
-            
-            foreach ($quantities as $quantity) {
-                $breakdown[] = [
-                    'quantity' => $quantity,
-                    'price' => $traditionalPrice,
-                    'total' => $traditionalPrice * $quantity,
-                    'type' => 'traditional'
-                ];
-            }
-            
-            return [
-                'product_id' => $productId,
-                'price_type' => $priceType,
-                'use_bracket_pricing' => false,
-                'breakdown' => $breakdown
-            ];
-        }
-
-        $activeBracket = ProductPriceBracket::where('product_id', $productId)
-                                           ->active()
-                                           ->first();
-
-        if (!$activeBracket) {
-            return [
-                'product_id' => $productId,
-                'price_type' => $priceType,
-                'use_bracket_pricing' => true,
-                'breakdown' => [],
-                'error' => 'No active bracket found'
-            ];
-        }
-
         $breakdown = [];
+        
         foreach ($quantities as $quantity) {
-            $price = $this->calculatePriceForQuantity($productId, $quantity, $priceType);
+            $options = $this->getAllPriceOptionsForQuantity($productId, $quantity, $priceType);
+            $bestPrice = $this->calculatePriceForQuantity($productId, $quantity, $priceType);
+            
             $breakdown[] = [
                 'quantity' => $quantity,
-                'price' => $price,
-                'total' => $price ? $price * $quantity : null,
-                'unit_savings' => $quantity > 1 ? 
-                    ($this->calculatePriceForQuantity($productId, 1, $priceType) - $price) : 0,
-                'total_savings' => $quantity > 1 ? 
-                    (($this->calculatePriceForQuantity($productId, 1, $priceType) * $quantity) - ($price * $quantity)) : 0,
-                'type' => 'bracket'
+                'price_options' => $options,
+                'options_count' => count($options),
+                'best_price' => $bestPrice,
+                'best_total' => $bestPrice ? $bestPrice * $quantity : null,
+                'has_multiple_options' => count($options) > 1
             ];
         }
 
         return [
             'product_id' => $productId,
             'price_type' => $priceType,
-            'use_bracket_pricing' => true,
-            'active_bracket_id' => $activeBracket->id,
             'breakdown' => $breakdown
         ];
-    }
-
-    /**
-     * Delete a bracket and its items
-     *
-     * @param int $bracketId
-     * @return bool
-     * @throws Exception
-     */
-    public function deleteBracket(int $bracketId): bool
-    {
-        $bracket = ProductPriceBracket::findOrFail($bracketId);
-
-        try {
-            DB::beginTransaction();
-
-            // Delete all bracket items
-            $bracket->bracketItems()->delete();
-            
-            // Delete the bracket
-            $wasSelected = $bracket->is_selected;
-            $productId = $bracket->product_id;
-            $bracket->delete();
-
-            // If this was the selected bracket, check if we should disable bracket pricing
-            if ($wasSelected) {
-                $remainingBrackets = ProductPriceBracket::where('product_id', $productId)->count();
-                if ($remainingBrackets === 0) {
-                    Product::where('id', $productId)->update(['use_bracket_pricing' => false]);
-                }
-            }
-
-            DB::commit();
-            return true;
-        } catch (Exception $e) {
-            DB::rollBack();
-            throw $e;
-        }
-    }
-
-    /**
-     * Get all brackets for a product
-     *
-     * @param int $productId
-     * @return \Illuminate\Database\Eloquent\Collection
-     */
-    public function getProductBrackets(int $productId)
-    {
-        return ProductPriceBracket::where('product_id', $productId)
-                                 ->with(['bracketItems' => function($query) {
-                                     $query->orderBy('price_type')->orderBy('min_quantity');
-                                 }, 'createdBy'])
-                                 ->orderBy('created_at', 'desc')
-                                 ->get();
-    }
-
-    /**
-     * Get the active bracket for a product
-     *
-     * @param int $productId
-     * @return ProductPriceBracket|null
-     */
-    public function getActiveBracket(int $productId): ?ProductPriceBracket
-    {
-        return ProductPriceBracket::where('product_id', $productId)
-                                 ->active()
-                                 ->with('bracketItems')
-                                 ->first();
     }
 
     /**
@@ -369,7 +252,7 @@ class BracketPricingService
      * @param array $itemData
      * @throws Exception
      */
-    protected function validateBracketItemData(array $itemData): void
+    private function validateBracketItemData(array $itemData): void
     {
         if (!isset($itemData['min_quantity']) || $itemData['min_quantity'] < 1) {
             throw new Exception('Minimum quantity must be at least 1');
@@ -391,7 +274,86 @@ class BracketPricingService
     }
 
     /**
-     * Get optimal pricing suggestions based on cost and margin
+     * Generate default label for price type
+     *
+     * @param string $priceType
+     * @return string
+     */
+    private function generateDefaultLabel(string $priceType): string
+    {
+        return match($priceType) {
+            'regular' => 'Regular Price',
+            'wholesale' => 'Wholesale Price',
+            'walk_in' => 'Walk-in Price',
+            default => 'Price Option'
+        };
+    }
+
+    /**
+     * Activate bracket and update product settings
+     *
+     * @param ProductPriceBracket $bracket
+     * @return void
+     */
+    private function activateBracket(ProductPriceBracket $bracket): void
+    {
+        // Deactivate other brackets for the same product
+        ProductPriceBracket::where('product_id', $bracket->product_id)
+                          ->where('id', '!=', $bracket->id)
+                          ->update(['is_selected' => false]);
+
+        // Enable bracket pricing on the product
+        $bracket->product()->update(['use_bracket_pricing' => true]);
+    }
+
+    /**
+     * Clone a bracket
+     *
+     * @param int $bracketId
+     * @param array $newBracketData
+     * @return ProductPriceBracket
+     * @throws Exception
+     */
+    public function cloneBracket(int $bracketId, array $newBracketData = []): ProductPriceBracket
+    {
+        $originalBracket = ProductPriceBracket::with('bracketItems')->findOrFail($bracketId);
+
+        try {
+            DB::beginTransaction();
+
+            // Create new bracket
+            $newBracket = ProductPriceBracket::create([
+                'product_id' => $originalBracket->product_id,
+                'is_selected' => $newBracketData['is_selected'] ?? false,
+                'effective_from' => $newBracketData['effective_from'] ?? now(),
+                'effective_to' => $newBracketData['effective_to'] ?? null,
+                'created_by' => Auth::id()
+            ]);
+
+            // Clone all bracket items
+            foreach ($originalBracket->bracketItems as $originalItem) {
+                BracketItem::create([
+                    'bracket_id' => $newBracket->id,
+                    'min_quantity' => $originalItem->min_quantity,
+                    'max_quantity' => $originalItem->max_quantity,
+                    'price' => $originalItem->price,
+                    'price_type' => $originalItem->price_type,
+                    'label' => $originalItem->label,
+                    'is_active' => $originalItem->is_active,
+                    'sort_order' => $originalItem->sort_order
+                ]);
+            }
+
+            DB::commit();
+            return $newBracket->load('bracketItems');
+        } catch (Exception $e) {
+            DB::rollBack();
+            throw $e;
+        }
+    }
+
+    /**
+     * Get optimal pricing suggestions
      *
      * @param int $productId
      * @param float $targetMargin
@@ -419,14 +381,33 @@ class BracketPricingService
             $adjustedMargin = $targetMargin * (1 - ($index * 0.02)); // 2% reduction per tier
             $adjustedMargin = max($adjustedMargin, 0.1); // Minimum 10% margin
             
-            $suggestedPrice = $costPrice / (1 - $adjustedMargin);
+            $basePrice = $costPrice / (1 - $adjustedMargin);
+            
+            // Generate multiple price options for this tier
+            $priceOptions = [
+                [
+                    'label' => 'Standard Price',
+                    'price' => round($basePrice, 2),
+                    'price_type' => 'regular'
+                ],
+                [
+                    'label' => 'Wholesale Price',
+                    'price' => round($basePrice * 0.9, 2),
+                    'price_type' => 'wholesale'
+                ],
+                [
+                    'label' => 'Walk-in Price',
+                    'price' => round($basePrice * 1.05, 2),
+                    'price_type' => 'walk_in'
+                ]
+            ];
             
             $suggestions[] = [
                 'min_quantity' => $quantity,
                 'max_quantity' => isset($quantities[$index + 1]) ? $quantities[$index + 1] - 1 : null,
-                'suggested_price' => round($suggestedPrice, 2),
+                'price_options' => $priceOptions,
                 'margin_percentage' => round($adjustedMargin * 100, 1),
-                'profit_per_unit' => round($suggestedPrice - $costPrice, 2)
+                'profit_per_unit' => round($basePrice - $costPrice, 2)
             ];
         }
 
@@ -439,111 +420,27 @@ class BracketPricingService
     }
 
     /**
-     * Clone bracket to create a new version
-     *
-     * @param int $bracketId
-     * @param array $newBracketData
-     * @return ProductPriceBracket
-     * @throws Exception
-     */
-    public function cloneBracket(int $bracketId, array $newBracketData = []): ProductPriceBracket
-    {
-        $originalBracket = ProductPriceBracket::with('bracketItems')->findOrFail($bracketId);
-
-        try {
-            DB::beginTransaction();
-
-            // Create new bracket
-            $newBracket = ProductPriceBracket::create([
-                'product_id' => $originalBracket->product_id,
-                'is_selected' => $newBracketData['is_selected'] ?? false,
-                'effective_from' => $newBracketData['effective_from'] ?? now(),
-                'effective_to' => $newBracketData['effective_to'] ?? null,
-                'created_by' => Auth::id()
-            ]);
-
-            // Clone bracket items
-            foreach ($originalBracket->bracketItems as $item) {
-                BracketItem::create([
-                    'bracket_id' => $newBracket->id,
-                    'min_quantity' => $item->min_quantity,
-                    'max_quantity' => $item->max_quantity,
-                    'price' => $item->price,
-                    'price_type' => $item->price_type,
-                    'is_active' => $item->is_active
-                ]);
-            }
-
-            // If this bracket is selected, activate it
-            if ($newBracket->is_selected) {
-                $this->activateBracket($newBracket);
-            }
-
-            DB::commit();
-            return $newBracket->load('bracketItems');
-        } catch (Exception $e) {
-            DB::rollBack();
-            throw $e;
-        }
-    }
-
-    /**
-     * Import brackets from CSV data
+     * Deactivate bracket pricing for a product
      *
      * @param int $productId
-     * @param array $csvData
-     * @return array
-     * @throws Exception
+     * @return bool
      */
-    public function importBracketsFromCsv(int $productId, array $csvData): array
+    public function deactivateBracketPricing(int $productId): bool
     {
-        $product = Product::findOrFail($productId);
-        $importedItems = [];
-        $errors = [];
-
         try {
             DB::beginTransaction();
 
-            // Create a new bracket for the import
-            $bracket = ProductPriceBracket::create([
-                'product_id' => $productId,
-                'is_selected' => false,
-                'effective_from' => now(),
-                'effective_to' => null,
-                'created_by' => Auth::id()
-            ]);
-
-            foreach ($csvData as $index => $row) {
-                try {
-                    $this->validateCsvRow($row, $index);
-                    
-                    $item = BracketItem::create([
-                        'bracket_id' => $bracket->id,
-                        'min_quantity' => (int) $row['min_quantity'],
-                        'max_quantity' => !empty($row['max_quantity']) ? (int) $row['max_quantity'] : null,
-                        'price' => (float) $row['price'],
-                        'price_type' => $row['price_type'],
-                        'is_active' => isset($row['is_active']) ? (bool) $row['is_active'] : true
-                    ]);
-
-                    $importedItems[] = $item;
-                } catch (Exception $e) {
-                    $errors[] = "Row {$index}: " . $e->getMessage();
-                }
-            }
-
-            if (!empty($errors)) {
-                DB::rollBack();
-                throw new Exception('Import failed with errors: ' . implode(', ', $errors));
-            }
+            $product = Product::findOrFail($productId);
+            
+            // Deactivate all brackets for this product
+            ProductPriceBracket::where('product_id', $productId)
+                ->update(['is_selected' => false]);
+            
+            // Disable bracket pricing on the product
+            $product->update(['use_bracket_pricing' => false]);
 
             DB::commit();
-            return [
-                'bracket_id' => $bracket->id,
-                'imported_count' => count($importedItems),
-                'bracket_items' => $importedItems,
-                'errors' => $errors
-            ];
+            return true;
         } catch (Exception $e) {
             DB::rollBack();
             throw $e;
@@ -551,37 +448,34 @@ class BracketPricingService
     }
 
     /**
-     * Validate CSV row data
+     * Activate a specific bracket
      *
-     * @param array $row
-     * @param int $index
-     * @throws Exception
+     * @param int $bracketId
+     * @return bool
      */
-    protected function validateCsvRow(array $row, int $index): void
+    public function activateSpecificBracket(int $bracketId): bool
     {
-        $required = ['min_quantity', 'price', 'price_type'];
-        
-        foreach ($required as $field) {
-            if (empty($row[$field])) {
-                throw new Exception("Missing required field: {$field}");
-            }
-        }
+        try {
+            DB::beginTransaction();
 
-        if (!is_numeric($row['min_quantity']) || (int) $row['min_quantity'] < 1) {
-            throw new Exception('Min quantity must be a positive integer');
-        }
+            $bracket = ProductPriceBracket::findOrFail($bracketId);
+            
+            // Deactivate other brackets for the same product
+            ProductPriceBracket::where('product_id', $bracket->product_id)
+                ->where('id', '!=', $bracket->id)
+                ->update(['is_selected' => false]);
 
-        if (!empty($row['max_quantity']) && 
-            (!is_numeric($row['max_quantity']) || (int) $row['max_quantity'] <= (int) $row['min_quantity'])) {
-            throw new Exception('Max quantity must be greater than min quantity');
-        }
+            // Activate this bracket
+            $bracket->update(['is_selected' => true]);
+            
+            // Enable bracket pricing on the product
+            $bracket->product()->update(['use_bracket_pricing' => true]);
 
-        if (!is_numeric($row['price']) || (float) $row['price'] < 0) {
-            throw new Exception('Price must be a positive number');
-        }
-
-        if (!in_array($row['price_type'], ['regular', 'wholesale', 'walk_in'])) {
-            throw new Exception('Invalid price type');
+            DB::commit();
+            return true;
+        } catch (Exception $e) {
+            DB::rollBack();
+            throw $e;
         }
     }
 }

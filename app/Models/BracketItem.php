@@ -16,14 +16,17 @@ class BracketItem extends Model
         'max_quantity',
         'price',
         'price_type',
-        'is_active'
+        'label',
+        'is_active',
+        'sort_order'
     ];
 
     protected $casts = [
         'min_quantity' => 'integer',
         'max_quantity' => 'integer',
         'price' => 'decimal:2',
-        'is_active' => 'boolean'
+        'is_active' => 'boolean',
+        'sort_order' => 'integer'
     ];
 
     // Price type constants
@@ -47,10 +50,10 @@ class BracketItem extends Model
         return $this->hasOneThrough(
             Product::class,
             ProductPriceBracket::class,
-            'id', // Foreign key on ProductPriceBracket table
-            'id', // Foreign key on Product table
-            'bracket_id', // Local key on BracketItem table
-            'product_id' // Local key on ProductPriceBracket table
+            'id',
+            'id',
+            'bracket_id',
+            'product_id'
         );
     }
 
@@ -76,145 +79,80 @@ class BracketItem extends Model
     public function scopeForQuantity($query, $quantity)
     {
         return $query->where('min_quantity', '<=', $quantity)
-                     ->where(function($q) use ($quantity) {
-                         $q->whereNull('max_quantity')
-                           ->orWhere('max_quantity', '>=', $quantity);
-                     });
+                    ->where(function($q) use ($quantity) {
+                        $q->whereNull('max_quantity')
+                          ->orWhere('max_quantity', '>=', $quantity);
+                    });
     }
 
     /**
-     * Check if quantity falls within this bracket item
+     * Scope to order by sort order and then by price
      */
-    public function containsQuantity($quantity)
+    public function scopeOrdered($query)
     {
-        $withinMin = $quantity >= $this->min_quantity;
-        $withinMax = is_null($this->max_quantity) || $quantity <= $this->max_quantity;
-        
-        return $withinMin && $withinMax;
+        return $query->orderBy('min_quantity', 'asc')
+                    ->orderBy('sort_order', 'asc')
+                    ->orderBy('price', 'asc');
     }
 
     /**
-     * Get formatted bracket range
+     * Get quantity range display
      */
-    public function getFormattedRangeAttribute()
+    public function getQuantityRangeAttribute()
     {
-        if (is_null($this->max_quantity)) {
-            return "{$this->min_quantity}+";
+        if ($this->max_quantity) {
+            return "{$this->min_quantity} - {$this->max_quantity}";
         }
+        return "{$this->min_quantity}+";
+    }
+
+    /**
+     * Check if this price option applies to a given quantity
+     */
+    public function appliesToQuantity($quantity)
+    {
+        $minValid = $this->min_quantity <= $quantity;
+        $maxValid = is_null($this->max_quantity) || $this->max_quantity >= $quantity;
         
-        return "{$this->min_quantity} - {$this->max_quantity}";
-    }
-
-    /**
-     * Get price type label
-     */
-    public function getPriceTypeLabelAttribute()
-    {
-        return match($this->price_type) {
-            self::PRICE_TYPE_REGULAR => 'Regular',
-            self::PRICE_TYPE_WHOLESALE => 'Wholesale',
-            self::PRICE_TYPE_WALK_IN => 'Walk-in',
-            default => ucfirst($this->price_type)
-        };
-    }
-
-    /**
-     * Calculate total price for given quantity
-     */
-    public function calculateTotal($quantity)
-    {
-        if (!$this->containsQuantity($quantity)) {
-            return null;
-        }
-        
-        return $this->price * $quantity;
-    }
-
-    /**
-     * Validate bracket item doesn't overlap with siblings
-     */
-    public function validateNoOverlap()
-    {
-        $query = self::where('bracket_id', $this->bracket_id)
-                     ->where('price_type', $this->price_type)
-                     ->where('is_active', true);
-
-        if ($this->exists) {
-            $query->where('id', '!=', $this->id);
-        }
-
-        $overlapping = $query->where(function($q) {
-            $q->where(function($subQ) {
-                // Check if our min_quantity falls within existing range
-                $subQ->where('min_quantity', '<=', $this->min_quantity)
-                     ->where(function($rangeQ) {
-                         $rangeQ->whereNull('max_quantity')
-                                ->orWhere('max_quantity', '>=', $this->min_quantity);
-                     });
-            })->orWhere(function($subQ) {
-                // Check if our max_quantity falls within existing range (if we have max_quantity)
-                if (!is_null($this->max_quantity)) {
-                    $subQ->where('min_quantity', '<=', $this->max_quantity)
-                         ->where(function($rangeQ) {
-                             $rangeQ->whereNull('max_quantity')
-                                    ->orWhere('max_quantity', '>=', $this->max_quantity);
-                         });
-                }
-            })->orWhere(function($subQ) {
-                // Check if existing bracket item falls within our range
-                $subQ->where('min_quantity', '>=', $this->min_quantity);
-                if (!is_null($this->max_quantity)) {
-                    $subQ->where('min_quantity', '<=', $this->max_quantity);
-                }
-            });
-        })->exists();
-
-        return !$overlapping;
-    }
-
-    /**
-     * Get the next bracket item (higher quantity)
-     */
-    public function getNextBracketItem()
-    {
-        return self::where('bracket_id', $this->bracket_id)
-                   ->where('price_type', $this->price_type)
-                   ->where('is_active', true)
-                   ->where('min_quantity', '>', $this->max_quantity ?? $this->min_quantity)
-                   ->orderBy('min_quantity', 'asc')
-                   ->first();
-    }
-
-    /**
-     * Get the previous bracket item (lower quantity)
-     */
-    public function getPreviousBracketItem()
-    {
-        return self::where('bracket_id', $this->bracket_id)
-                   ->where('price_type', $this->price_type)
-                   ->where('is_active', true)
-                   ->where('min_quantity', '<', $this->min_quantity)
-                   ->orderBy('min_quantity', 'desc')
-                   ->first();
+        return $minValid && $maxValid && $this->is_active;
     }
 
     /**
      * Boot method for model events
      */
-    protected static function boot()
-    {
-        parent::boot();
+ protected static function boot()
+{
+    parent::boot();
 
-        static::saving(function ($bracketItem) {
-            // Validate quantity range
-            if ($bracketItem->max_quantity && $bracketItem->max_quantity <= $bracketItem->min_quantity) {
-                throw new \Exception('Maximum quantity must be greater than minimum quantity.');
-            }
+    static::saving(function ($bracketItem) {
+        // Basic validation only
+        if ($bracketItem->max_quantity && $bracketItem->max_quantity <= $bracketItem->min_quantity) {
+            throw new \Exception('Maximum quantity must be greater than minimum quantity.');
+        }
+        
+        // REMOVED overlap validation to allow multiple prices per tier
+        // Multiple price options within the same quantity range are now allowed
+    });
 
-            // Validate no overlapping bracket items
-            if (!$bracketItem->validateNoOverlap()) {
-                throw new \Exception('Bracket item overlaps with existing bracket item for the same price type.');
-            }
-        });
-    }
+    static::creating(function ($item) {
+        // Auto-set sort order if not provided
+        if (is_null($item->sort_order)) {
+            $maxOrder = static::where('bracket_id', $item->bracket_id)
+                             ->where('min_quantity', $item->min_quantity)
+                             ->where('max_quantity', $item->max_quantity)
+                             ->max('sort_order');
+            $item->sort_order = ($maxOrder ?? 0) + 1;
+        }
+
+        // Set default label if not provided
+        if (empty($item->label)) {
+            $priceTypeLabels = [
+                'regular' => 'Regular Price',
+                'wholesale' => 'Wholesale Price',
+                'walk_in' => 'Walk-in Price'
+            ];
+            $item->label = $priceTypeLabels[$item->price_type] ?? 'Price Option';
+        }
+    });
+}
 }
