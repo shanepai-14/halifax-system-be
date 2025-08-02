@@ -35,8 +35,9 @@ class BracketPricingService
                 'created_by' => Auth::id()
             ]);
 
-            // Create bracket items (multiple prices per tier are supported)
+            // Create bracket items (multiple prices per tier are now fully supported)
             if (!empty($bracketData['bracket_items'])) {
+                // No longer validate quantity ranges since multiple prices per tier are allowed
                 foreach ($bracketData['bracket_items'] as $index => $itemData) {
                     $this->validateBracketItemData($itemData);
                     
@@ -67,7 +68,7 @@ class BracketPricingService
     }
 
     /**
-     * Update a bracket and its items
+     * Update a bracket and its items with enhanced support for multiple prices per tier
      *
      * @param int $bracketId
      * @param array $bracketData
@@ -88,7 +89,7 @@ class BracketPricingService
                 'effective_to' => $bracketData['effective_to'] ?? $bracket->effective_to,
             ]);
 
-            // Handle bracket items
+            // Handle bracket items - now supports multiple prices per tier
             if (isset($bracketData['bracket_items'])) {
                 $existingItemIds = collect($bracketData['bracket_items'])
                     ->pluck('id')
@@ -156,7 +157,7 @@ class BracketPricingService
             return null;
         }
 
-        // Get the best (lowest) price from all applicable options
+        // Get the best (lowest) price from all applicable options within the same tier
         $bestPriceItem = $activeBracket->bracketItems()
             ->where('is_active', true)
             ->where('price_type', $priceType)
@@ -165,7 +166,7 @@ class BracketPricingService
                 $q->whereNull('max_quantity')
                   ->orWhere('max_quantity', '>=', $quantity);
             })
-            ->orderBy('price', 'asc')
+            ->orderBy('price', 'asc')  // Get the lowest price
             ->first();
 
         return $bestPriceItem ? $bestPriceItem->price : null;
@@ -173,6 +174,7 @@ class BracketPricingService
 
     /**
      * Get all available price options for a specific quantity and price type
+     * This is the new key method that supports multiple prices per tier
      *
      * @param int $productId
      * @param int $quantity
@@ -189,6 +191,7 @@ class BracketPricingService
             return [];
         }
 
+        // Get ALL price options that match the quantity and price type
         $priceOptions = $activeBracket->bracketItems()
             ->where('is_active', true)
             ->where('price_type', $priceType)
@@ -208,13 +211,36 @@ class BracketPricingService
                 'price' => $item->price,
                 'total_price' => $item->price * $quantity,
                 'quantity_range' => $item->quantity_range,
-                'sort_order' => $item->sort_order
+                'sort_order' => $item->sort_order,
+                'price_type' => $item->price_type
             ];
         })->toArray();
     }
 
     /**
-     * Get pricing breakdown for different quantities with multiple options
+     * Get all price options for all price types for a specific quantity
+     *
+     * @param int $productId
+     * @param int $quantity
+     * @return array
+     */
+    public function getAllPriceOptionsForAllTypes(int $productId, int $quantity): array
+    {
+        $priceTypes = ['regular', 'wholesale', 'walk_in'];
+        $result = [];
+
+        foreach ($priceTypes as $priceType) {
+            $options = $this->getAllPriceOptionsForQuantity($productId, $quantity, $priceType);
+            if (!empty($options)) {
+                $result[$priceType] = $options;
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Get pricing breakdown for different quantities with multiple options per quantity
      *
      * @param int $productId
      * @param string $priceType
@@ -235,19 +261,77 @@ class BracketPricingService
                 'options_count' => count($options),
                 'best_price' => $bestPrice,
                 'best_total' => $bestPrice ? $bestPrice * $quantity : null,
-                'has_multiple_options' => count($options) > 1
+                'has_multiple_options' => count($options) > 1,
+                'price_range' => !empty($options) ? [
+                    'min' => min(array_column($options, 'price')),
+                    'max' => max(array_column($options, 'price'))
+                ] : null
             ];
         }
 
         return [
             'product_id' => $productId,
             'price_type' => $priceType,
-            'breakdown' => $breakdown
+            'breakdown' => $breakdown,
+            'has_bracket_pricing' => !empty($breakdown) && $breakdown[0]['options_count'] > 0
         ];
     }
 
     /**
-     * Validate bracket item data
+     * Get pricing tiers with all their price options
+     *
+     * @param int $productId
+     * @return array
+     */
+    public function getPricingTiers(int $productId): array
+    {
+        $activeBracket = ProductPriceBracket::where('product_id', $productId)
+            ->where('is_selected', true)
+            ->with('bracketItems')
+            ->first();
+
+        if (!$activeBracket) {
+            return [];
+        }
+
+        $tiersMap = [];
+        
+        foreach ($activeBracket->bracketItems as $item) {
+            $tierKey = $item->min_quantity . '-' . ($item->max_quantity ?: 'inf');
+            
+            if (!isset($tiersMap[$tierKey])) {
+                $tiersMap[$tierKey] = [
+                    'tier_name' => "Qty {$item->quantity_range}",
+                    'min_quantity' => $item->min_quantity,
+                    'max_quantity' => $item->max_quantity,
+                    'quantity_range' => $item->quantity_range,
+                    'price_options' => []
+                ];
+            }
+            
+            $tiersMap[$tierKey]['price_options'][] = [
+                'id' => $item->id,
+                'label' => $item->label,
+                'price' => $item->price,
+                'price_type' => $item->price_type,
+                'is_active' => $item->is_active,
+                'sort_order' => $item->sort_order
+            ];
+        }
+
+        // Sort tiers by min_quantity and options by sort_order
+        $tiers = array_values($tiersMap);
+        usort($tiers, fn($a, $b) => $a['min_quantity'] <=> $b['min_quantity']);
+        
+        foreach ($tiers as &$tier) {
+            usort($tier['price_options'], fn($a, $b) => $a['sort_order'] <=> $b['sort_order']);
+        }
+
+        return $tiers;
+    }
+
+    /**
+     * Validate bracket item data (basic validation only, no overlap checking)
      *
      * @param array $itemData
      * @throws Exception
@@ -307,7 +391,7 @@ class BracketPricingService
     }
 
     /**
-     * Clone a bracket
+     * Clone a bracket with all its price options
      *
      * @param int $bracketId
      * @param array $newBracketData
@@ -330,7 +414,7 @@ class BracketPricingService
                 'created_by' => Auth::id()
             ]);
 
-            // Clone all bracket items
+            // Clone all bracket items including labels and sort orders
             foreach ($originalBracket->bracketItems as $originalItem) {
                 BracketItem::create([
                     'bracket_id' => $newBracket->id,
@@ -353,7 +437,7 @@ class BracketPricingService
     }
 
     /**
-     * Get optimal pricing suggestions
+     * Get enhanced optimal pricing suggestions with multiple options per tier
      *
      * @param int $productId
      * @param float $targetMargin
@@ -388,26 +472,43 @@ class BracketPricingService
                 [
                     'label' => 'Standard Price',
                     'price' => round($basePrice, 2),
-                    'price_type' => 'regular'
+                    'price_type' => 'regular',
+                    'margin_percentage' => round($adjustedMargin * 100, 1),
+                    'description' => 'Standard pricing for regular customers'
+                ],
+                [
+                    'label' => 'Competitive Price',
+                    'price' => round($basePrice * 0.95, 2),
+                    'price_type' => 'regular',
+                    'margin_percentage' => round(($adjustedMargin * 0.95) * 100, 1),
+                    'description' => 'Competitive pricing to match market rates'
                 ],
                 [
                     'label' => 'Wholesale Price',
-                    'price' => round($basePrice * 0.9, 2),
-                    'price_type' => 'wholesale'
+                    'price' => round($basePrice * 0.85, 2),
+                    'price_type' => 'wholesale',
+                    'margin_percentage' => round(($adjustedMargin * 0.85) * 100, 1),
+                    'description' => 'Wholesale pricing for bulk customers'
                 ],
                 [
-                    'label' => 'Walk-in Price',
-                    'price' => round($basePrice * 1.05, 2),
-                    'price_type' => 'walk_in'
+                    'label' => 'Premium Price',
+                    'price' => round($basePrice * 1.1, 2),
+                    'price_type' => 'walk_in',
+                    'margin_percentage' => round(($adjustedMargin * 1.1) * 100, 1),
+                    'description' => 'Premium pricing for walk-in customers'
                 ]
             ];
             
             $suggestions[] = [
                 'min_quantity' => $quantity,
                 'max_quantity' => isset($quantities[$index + 1]) ? $quantities[$index + 1] - 1 : null,
+                'tier_name' => "Tier " . ($index + 1),
                 'price_options' => $priceOptions,
-                'margin_percentage' => round($adjustedMargin * 100, 1),
-                'profit_per_unit' => round($basePrice - $costPrice, 2)
+                'base_margin' => round($adjustedMargin * 100, 1),
+                'profit_range' => [
+                    'min' => round(min(array_column($priceOptions, 'price')) - $costPrice, 2),
+                    'max' => round(max(array_column($priceOptions, 'price')) - $costPrice, 2)
+                ]
             ];
         }
 
@@ -415,7 +516,9 @@ class BracketPricingService
             'product_id' => $productId,
             'cost_price' => $costPrice,
             'target_margin' => $targetMargin,
-            'suggestions' => $suggestions
+            'suggestions' => $suggestions,
+            'total_tiers' => count($suggestions),
+            'total_price_options' => array_sum(array_map(fn($s) => count($s['price_options']), $suggestions))
         ];
     }
 
@@ -477,5 +580,59 @@ class BracketPricingService
             DB::rollBack();
             throw $e;
         }
+    }
+
+    /**
+     * Get comprehensive bracket statistics
+     *
+     * @param int $productId
+     * @return array
+     */
+    public function getBracketStatistics(int $productId): array
+    {
+        $product = Product::findOrFail($productId);
+        $activeBracket = ProductPriceBracket::where('product_id', $productId)
+            ->where('is_selected', true)
+            ->with('bracketItems')
+            ->first();
+
+        if (!$activeBracket) {
+            return [
+                'has_bracket_pricing' => false,
+                'message' => 'No active bracket pricing found'
+            ];
+        }
+
+        $items = $activeBracket->bracketItems;
+        $tiers = $this->getPricingTiers($productId);
+        
+        $priceTypeStats = [];
+        foreach (['regular', 'wholesale', 'walk_in'] as $type) {
+            $typeItems = $items->where('price_type', $type);
+            if ($typeItems->isNotEmpty()) {
+                $prices = $typeItems->pluck('price')->map(fn($p) => (float) $p);
+                $priceTypeStats[$type] = [
+                    'count' => $typeItems->count(),
+                    'active_count' => $typeItems->where('is_active', true)->count(),
+                    'price_range' => [
+                        'min' => $prices->min(),
+                        'max' => $prices->max(),
+                        'average' => round($prices->average(), 2)
+                    ]
+                ];
+            }
+        }
+
+        return [
+            'has_bracket_pricing' => true,
+            'bracket_id' => $activeBracket->id,
+            'total_options' => $items->count(),
+            'active_options' => $items->where('is_active', true)->count(),
+            'total_tiers' => count($tiers),
+            'price_type_statistics' => $priceTypeStats,
+            'created_at' => $activeBracket->created_at,
+            'effective_from' => $activeBracket->effective_from,
+            'effective_to' => $activeBracket->effective_to
+        ];
     }
 }

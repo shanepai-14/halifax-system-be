@@ -100,7 +100,7 @@ class BracketPricingController extends Controller
     }
 
     /**
-     * Get all brackets for a product
+     * Get all brackets for a product with enhanced details
      *
      * @param int $productId
      * @return JsonResponse
@@ -117,11 +117,10 @@ class BracketPricingController extends Controller
                 ->orderBy('created_at', 'desc')
                 ->get();
 
-            // Group bracket items by tiers for easier frontend handling
             $bracketsData = $brackets->map(function($bracket) {
+                // Group bracket items by tiers for easier frontend handling
                 $tiersMap = [];
                 
-                // Group items by quantity range
                 foreach ($bracket->bracketItems as $item) {
                     $tierKey = $item->min_quantity . '-' . ($item->max_quantity ?: 'inf');
                     
@@ -129,6 +128,7 @@ class BracketPricingController extends Controller
                         $tiersMap[$tierKey] = [
                             'min_quantity' => $item->min_quantity,
                             'max_quantity' => $item->max_quantity,
+                            'quantity_range' => $item->quantity_range,
                             'price_entries' => []
                         ];
                     }
@@ -142,6 +142,14 @@ class BracketPricingController extends Controller
                         'sort_order' => $item->sort_order
                     ];
                 }
+
+                // Calculate statistics
+                $totalOptions = $bracket->bracketItems->count();
+                $activeOptions = $bracket->bracketItems->where('is_active', true)->count();
+                $priceTypes = $bracket->bracketItems->pluck('price_type')->unique()->values();
+                $prices = $bracket->bracketItems->pluck('price')->map(function($price) {
+                    return (float) $price;
+                });
 
                 return [
                     'id' => $bracket->id,
@@ -163,8 +171,17 @@ class BracketPricingController extends Controller
                         ];
                     }),
                     'tiers' => array_values($tiersMap),
-                    'total_price_options' => $bracket->bracketItems->count(),
-                    'active_price_options' => $bracket->bracketItems->where('is_active', true)->count()
+                    'statistics' => [
+                        'total_options' => $totalOptions,
+                        'active_options' => $activeOptions,
+                        'total_tiers' => count($tiersMap),
+                        'price_types' => $priceTypes,
+                        'price_range' => [
+                            'min' => $prices->min(),
+                            'max' => $prices->max(),
+                            'average' => $prices->average()
+                        ]
+                    ]
                 ];
             });
 
@@ -205,44 +222,7 @@ class BracketPricingController extends Controller
             $quantity = $validated['quantity'];
             $priceType = $validated['price_type'] ?? null;
 
-            $activeBracket = ProductPriceBracket::where('product_id', $productId)
-                ->where('is_selected', true)
-                ->with('bracketItems')
-                ->first();
-
-            if (!$activeBracket) {
-                return response()->json([
-                    'status' => 'success',
-                    'data' => [
-                        'product_id' => $productId,
-                        'quantity' => $quantity,
-                        'price_options' => [],
-                        'has_bracket_pricing' => false
-                    ]
-                ]);
-            }
-
-            $query = $activeBracket->bracketItems()
-                ->where('is_active', true)
-                ->forQuantity($quantity);
-
-            if ($priceType) {
-                $query->where('price_type', $priceType);
-            }
-
-            $priceOptions = $query->ordered()->get();
-
-            $options = $priceOptions->map(function($item) use ($quantity) {
-                return [
-                    'id' => $item->id,
-                    'price' => $item->price,
-                    'total_price' => $item->price * $quantity,
-                    'price_type' => $item->price_type,
-                    'label' => $item->label,
-                    'quantity_range' => $item->quantity_range,
-                    'sort_order' => $item->sort_order
-                ];
-            });
+            $options = $this->bracketPricingService->getAllPriceOptionsForQuantity($productId, $quantity, $priceType);
 
             return response()->json([
                 'status' => 'success',
@@ -251,13 +231,9 @@ class BracketPricingController extends Controller
                     'quantity' => $quantity,
                     'price_type' => $priceType,
                     'price_options' => $options,
-                    'options_count' => $options->count(),
-                    'has_bracket_pricing' => true,
-                    'best_price' => $options->min('price'),
-                    'price_range' => [
-                        'min' => $options->min('price'),
-                        'max' => $options->max('price')
-                    ]
+                    'options_count' => count($options),
+                    'has_bracket_pricing' => !empty($options),
+                    'best_price' => !empty($options) ? min(array_column($options, 'price')) : null
                 ]
             ]);
         } catch (Exception $e) {
@@ -287,29 +263,8 @@ class BracketPricingController extends Controller
             $quantity = $validated['quantity'];
             $priceType = $validated['price_type'] ?? 'regular';
 
-            $activeBracket = ProductPriceBracket::where('product_id', $productId)
-                ->where('is_selected', true)
-                ->first();
-
-            if (!$activeBracket) {
-                return response()->json([
-                    'status' => 'success',
-                    'data' => [
-                        'product_id' => $productId,
-                        'quantity' => $quantity,
-                        'price_type' => $priceType,
-                        'best_price' => null,
-                        'has_pricing' => false
-                    ]
-                ]);
-            }
-
-            $bestPriceItem = $activeBracket->bracketItems()
-                ->where('is_active', true)
-                ->where('price_type', $priceType)
-                ->forQuantity($quantity)
-                ->orderBy('price', 'asc')
-                ->first();
+            $bestPrice = $this->bracketPricingService->calculatePriceForQuantity($productId, $quantity, $priceType);
+            $allOptions = $this->bracketPricingService->getAllPriceOptionsForQuantity($productId, $quantity, $priceType);
 
             return response()->json([
                 'status' => 'success',
@@ -317,20 +272,51 @@ class BracketPricingController extends Controller
                     'product_id' => $productId,
                     'quantity' => $quantity,
                     'price_type' => $priceType,
-                    'best_price' => $bestPriceItem ? $bestPriceItem->price : null,
-                    'total_amount' => $bestPriceItem ? $bestPriceItem->price * $quantity : null,
-                    'price_option' => $bestPriceItem ? [
-                        'id' => $bestPriceItem->id,
-                        'label' => $bestPriceItem->label,
-                        'quantity_range' => $bestPriceItem->quantity_range
-                    ] : null,
-                    'has_pricing' => $bestPriceItem !== null
+                    'best_price' => $bestPrice,
+                    'total_amount' => $bestPrice ? $bestPrice * $quantity : null,
+                    'all_options' => $allOptions,
+                    'options_count' => count($allOptions),
+                    'has_pricing' => $bestPrice !== null
                 ]
             ]);
         } catch (Exception $e) {
             return response()->json([
                 'status' => 'error',
                 'message' => 'Error calculating best price',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get enhanced pricing breakdown with multiple options per quantity
+     *
+     * @param Request $request
+     * @param int $productId
+     * @return JsonResponse
+     */
+    public function getPricingBreakdown(Request $request, int $productId): JsonResponse
+    {
+        try {
+            $validated = $request->validate([
+                'price_type' => 'nullable|in:regular,wholesale,walk_in',
+                'quantities' => 'nullable|array',
+                'quantities.*' => 'integer|min:1'
+            ]);
+
+            $priceType = $validated['price_type'] ?? 'regular';
+            $quantities = $validated['quantities'] ?? [1, 5, 10, 25, 50, 100];
+
+            $breakdown = $this->bracketPricingService->getPricingBreakdown($productId, $priceType, $quantities);
+
+            return response()->json([
+                'status' => 'success',
+                'data' => $breakdown
+            ]);
+        } catch (Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Error retrieving pricing breakdown',
                 'error' => $e->getMessage()
             ], 500);
         }
@@ -376,18 +362,7 @@ class BracketPricingController extends Controller
     public function activate(int $bracketId): JsonResponse
     {
         try {
-            $bracket = ProductPriceBracket::findOrFail($bracketId);
-            
-            // Deactivate other brackets for the same product
-            ProductPriceBracket::where('product_id', $bracket->product_id)
-                ->where('id', '!=', $bracket->id)
-                ->update(['is_selected' => false]);
-
-            // Activate this bracket
-            $bracket->update(['is_selected' => true]);
-            
-            // Enable bracket pricing on the product
-            $bracket->product()->update(['use_bracket_pricing' => true]);
+            $success = $this->bracketPricingService->activateSpecificBracket($bracketId);
 
             return response()->json([
                 'status' => 'success',
@@ -411,14 +386,7 @@ class BracketPricingController extends Controller
     public function deactivateBracketPricing(int $productId): JsonResponse
     {
         try {
-            $product = Product::findOrFail($productId);
-            
-            // Deactivate all brackets for this product
-            ProductPriceBracket::where('product_id', $productId)
-                ->update(['is_selected' => false]);
-            
-            // Disable bracket pricing on the product
-            $product->update(['use_bracket_pricing' => false]);
+            $success = $this->bracketPricingService->deactivateBracketPricing($productId);
 
             return response()->json([
                 'status' => 'success',
@@ -432,4 +400,72 @@ class BracketPricingController extends Controller
             ], 500);
         }
     }
+
+    /**
+     * Clone a bracket
+     *
+     * @param Request $request
+     * @param int $bracketId
+     * @return JsonResponse
+     */
+    public function clone(Request $request, int $bracketId): JsonResponse
+    {
+        try {
+            $validated = $request->validate([
+                'is_selected' => 'boolean',
+                'effective_from' => 'nullable|date',
+                'effective_to' => 'nullable|date|after:effective_from'
+            ]);
+
+            $newBracket = $this->bracketPricingService->cloneBracket($bracketId, $validated);
+
+            return response()->json([
+                'status' => 'success',
+                'data' => $newBracket->load('bracketItems'),
+                'message' => 'Bracket cloned successfully'
+            ], 201);
+        } catch (Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Error cloning bracket',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get optimal pricing suggestions with multiple options per tier
+     *
+     * @param Request $request
+     * @param int $productId
+     * @return JsonResponse
+     */
+    public function getOptimalPricingSuggestions(Request $request, int $productId): JsonResponse
+    {
+        try {
+            $validated = $request->validate([
+                'target_margin' => 'nullable|numeric|min:0|max:1',
+                'quantities' => 'nullable|array',
+                'quantities.*' => 'integer|min:1'
+            ]);
+
+            $targetMargin = $validated['target_margin'] ?? 0.3;
+            $quantities = $validated['quantities'] ?? [1, 10, 25, 50];
+
+            $suggestions = $this->bracketPricingService->getOptimalPricingSuggestions($productId, $targetMargin, $quantities);
+
+            return response()->json([
+                'status' => 'success',
+                'data' => $suggestions
+            ]);
+        } catch (Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Error retrieving pricing suggestions',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
 }
+
+  
