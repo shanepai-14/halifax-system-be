@@ -28,7 +28,7 @@ use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\BracketPricingController;
 use App\Http\Controllers\ReportsController;
 use App\Http\Controllers\PrintController;
-
+use App\Http\Controllers\CustomerCustomPricingController;
 
 
 
@@ -155,13 +155,13 @@ Route::prefix('print')->group(function () {
                 Route::get('/warnings', [InventoryController::class, 'getWarnings']);
                 Route::get('/summary-stats', [InventoryController::class, 'getSummaryStats']);
 
-                Route::prefix('counts')->group(function () {
-                    Route::get('/', [InventoryCountController::class, 'index']);
-                    Route::post('/', [InventoryCountController::class, 'store']);
-                    Route::get('/{id}', [InventoryCountController::class, 'show']);
-                    Route::put('/{id}', [InventoryCountController::class, 'update']);
-                    Route::post('/{id}/finalize', [InventoryCountController::class, 'finalize']);
-                    Route::post('/{id}/cancel', [InventoryCountController::class, 'cancel']);
+            Route::prefix('counts')->group(function () {
+                Route::get('/', [InventoryCountController::class, 'index']);
+                Route::post('/', [InventoryCountController::class, 'store']);
+                Route::get('/{id}', [InventoryCountController::class, 'show']);
+                Route::put('/{id}', [InventoryCountController::class, 'update']);
+                Route::post('/{id}/finalize', [InventoryCountController::class, 'finalize']);
+                Route::post('/{id}/cancel', [InventoryCountController::class, 'cancel']);
                 });
 
             });
@@ -175,6 +175,14 @@ Route::prefix('print')->group(function () {
                 Route::put('/{id}', [CustomerController::class, 'update']);
                 Route::delete('/{id}', [CustomerController::class, 'destroy']);
                 Route::post('/{id}/restore', [CustomerController::class, 'restore']);
+
+                Route::put('{customer}/valued-status', [CustomerCustomPricingController::class, 'toggleValuedCustomer']);
+                Route::get('{customer}/with-pricing', [CustomerController::class, 'showWithPricing']);
+                Route::get('{customer}/products/{product}/custom-pricing', [CustomerCustomPricingController::class, 'getCustomPricing']);
+                Route::get('{customer}/custom-prices', [CustomerCustomPricingController::class, 'getCustomPrices']);
+                Route::post('{customer}/custom-prices', [CustomerCustomPricingController::class, 'setCustomPrices']);
+                Route::put('custom-prices/{price}', [CustomerCustomPricingController::class, 'updateCustomPrice']);
+                Route::delete('custom-prices/{price}', [CustomerCustomPricingController::class, 'deleteCustomPrice']);
             });
 
 
@@ -250,56 +258,27 @@ Route::prefix('print')->group(function () {
                 Route::get('/employees/{employeeId}/transactions', [PettyCashController::class, 'getTransactionsByEmployee']);
             });
 
-          Route::prefix('bracket-pricing')->group(function () {
-    
-    // Product bracket management
-    Route::get('/products/{productId}/brackets', [BracketPricingController::class, 'index'])
-        ->name('bracket-pricing.product.brackets');
-    
-    Route::post('/products/{productId}/brackets', [BracketPricingController::class, 'store'])
-        ->name('bracket-pricing.store');
-    
-    // Bracket management
-    Route::put('/brackets/{bracketId}', [BracketPricingController::class, 'update'])
-        ->name('bracket-pricing.update');
-    
-    Route::delete('/brackets/{bracketId}', [BracketPricingController::class, 'destroy'])
-        ->name('bracket-pricing.destroy');
-    
-    Route::post('/brackets/{bracketId}/clone', [BracketPricingController::class, 'clone'])
-        ->name('bracket-pricing.clone');
-    
-    // Bracket activation/deactivation
-    Route::post('/brackets/{bracketId}/activate', [BracketPricingController::class, 'activate'])
-        ->name('bracket-pricing.activate');
-    
-    Route::post('/products/{productId}/deactivate', [BracketPricingController::class, 'deactivateBracketPricing'])
-        ->name('bracket-pricing.deactivate');
-    
-    // Enhanced pricing queries - Multiple prices per tier
-    Route::get('/products/{productId}/price-options', [BracketPricingController::class, 'getPriceOptionsForQuantity'])
-        ->name('bracket-pricing.price-options');
-    
-    Route::post('/products/{productId}/calculate-best-price', [BracketPricingController::class, 'calculateBestPrice'])
-        ->name('bracket-pricing.calculate-best-price');
-    
-    Route::get('/products/{productId}/pricing-breakdown', [BracketPricingController::class, 'getPricingBreakdown'])
-        ->name('bracket-pricing.breakdown');
-    
-    // Pricing suggestions and optimization
-    Route::get('/products/{productId}/suggestions', [BracketPricingController::class, 'getOptimalPricingSuggestions'])
-        ->name('bracket-pricing.suggestions');
-});
+            Route::prefix('bracket-pricing')->group(function () {
+                Route::get('/products/{productId}/brackets', [BracketPricingController::class, 'index']);
+                Route::post('/products/{productId}/brackets', [BracketPricingController::class, 'store']);
+                Route::put('/brackets/{bracketId}', [BracketPricingController::class, 'update']);
+                Route::delete('/brackets/{bracketId}', [BracketPricingController::class, 'destroy']);
+                Route::post('/brackets/{bracketId}/clone', [BracketPricingController::class, 'clone']);
+                Route::post('/brackets/{bracketId}/activate', [BracketPricingController::class, 'activate']);
+                Route::post('/products/{productId}/deactivate', [BracketPricingController::class, 'deactivateBracketPricing']);
+                Route::get('/products/{productId}/price-options', [BracketPricingController::class, 'getPriceOptionsForQuantity']);
+                Route::post('/products/{productId}/calculate-best-price', [BracketPricingController::class, 'calculateBestPrice']);
+                Route::get('/products/{productId}/pricing-breakdown', [BracketPricingController::class, 'getPricingBreakdown']);
+                Route::get('/products/{productId}/suggestions', [BracketPricingController::class, 'getOptimalPricingSuggestions']);
+            });
         });
 
 
+             Route::prefix('reports')->name('reports.')->group(function () {
 
-           Route::prefix('reports')->name('reports.')->group(function () {
-        // Dashboard and overview
                 Route::get('/dashboard', [ReportsController::class, 'dashboard'])->name('dashboard');
                 Route::get('/chart-data', [ReportsController::class, 'getChartData'])->name('chart-data');
                 
-                // Period-based reports
                 Route::get('/monthly', [ReportsController::class, 'getMonthlyReport'])->name('monthly');
                 Route::get('/yearly', [ReportsController::class, 'getYearlyReport'])->name('yearly');
                 Route::get('/daily', [ReportsController::class, 'getDailyReport'])->name('daily');
@@ -328,7 +307,7 @@ Route::prefix('print')->group(function () {
                     Route::post('/rebuild-summaries', [ReportsController::class, 'rebuildSummaries'])->name('rebuild-summaries');
                     Route::get('/health-check', [ReportsController::class, 'getHealthCheck'])->name('health-check');
                 });
-    });
+            });
 
              Route::post('attachments/{attachmentId}', [AttachmentController::class, 'deleteAttachment']);
 

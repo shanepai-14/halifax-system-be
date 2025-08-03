@@ -1,7 +1,7 @@
 <?php
 
 namespace App\Http\Controllers;
-
+use App\Models\Customer;
 use App\Services\CustomerService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -219,6 +219,28 @@ class CustomerController extends Controller
                 'message' => 'Error restoring customer',
                 'error' => $e->getMessage()
             ], 500);
+        }
+    }
+
+    public function showWithPricing(int $id): JsonResponse
+    {
+        try {
+            $customer = Customer::with(['customPrices.product'])->findOrFail($id);
+            $pricingSummary = $customer->getPricingSummary();
+
+            return response()->json([
+                'status' => 'success',
+                'data' => [
+                    'customer' => $customer,
+                    'pricing_summary' => $pricingSummary
+                ]
+            ]);
+        } catch (Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Customer not found',
+                'error' => $e->getMessage()
+            ], 404);
         }
     }
 }
