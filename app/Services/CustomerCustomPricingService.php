@@ -45,7 +45,7 @@ class CustomerCustomPricingService
                     'min_quantity' => $priceData['min_quantity'],
                     'max_quantity' => $priceData['max_quantity'] ?? null,
                     'price' => $priceData['price'],
-                    'label' => $priceData['label'] ?? $this->generateDefaultLabel($priceData),
+                    'label' => $this->generateDefaultLabel($priceData),
                     'is_active' => true,
                     'effective_from' => $priceData['effective_from'] ?? now(),
                     'effective_to' => $priceData['effective_to'] ?? null,
@@ -161,65 +161,17 @@ class CustomerCustomPricingService
         $query->update(['is_active' => false]);
     }
 
-    private function generateDefaultLabel(array $priceData): string
+  public function generateDefaultLabel(array $priceData): string
     {
-
-        $rangeLabel = $priceData['max_quantity'] 
-            ? "{$priceData['min_quantity']}-{$priceData['max_quantity']}"
-            : "{$priceData['min_quantity']}+";
+        if (!empty($priceData['max_quantity'])) {
+            $rangeLabel = "{$priceData['min_quantity']}-{$priceData['max_quantity']}";
+        } else {
+            $rangeLabel = "{$priceData['min_quantity']}+";
+        }
 
         return "({$rangeLabel})";
     }
 
-    private function calculateDiscountFromRegular(Product $product, float $customPrice): float
-    {
-        $regularPrice = $product->regular_price;
-        
-        if ($regularPrice <= 0) {
-            return 0;
-        }
 
-        return round((($regularPrice - $customPrice) / $regularPrice) * 100, 2);
-    }
 
-    private function getSuggestedQuantityRanges(int $customerId, int $productId): array
-    {
-        // Get purchase history to suggest quantity ranges
-        $purchases = DB::table('sale_items')
-            ->join('sales', 'sale_items.sale_id', '=', 'sales.id')
-            ->where('sales.customer_id', $customerId)
-            ->where('sale_items.product_id', $productId)
-            ->selectRaw('MIN(sale_items.quantity) as min_qty, MAX(sale_items.quantity) as max_qty, AVG(sale_items.quantity) as avg_qty')
-            ->first();
-
-        if (!$purchases || !$purchases->min_qty) {
-            // Default ranges if no history
-            return [
-                ['min' => 5, 'max' => 20],
-                ['min' => 21, 'max' => 50],
-                ['min' => 51, 'max' => null]
-            ];
-        }
-
-        $minQty = (int) $purchases->min_qty;
-        $maxQty = (int) $purchases->max_qty;
-        $avgQty = (int) $purchases->avg_qty;
-
-        // Generate ranges based on history
-        $ranges = [];
-        
-        if ($minQty > 5) {
-            $ranges[] = ['min' => 5, 'max' => $minQty - 1];
-        }
-        
-        $ranges[] = ['min' => $minQty, 'max' => $avgQty];
-        
-        if ($avgQty < $maxQty) {
-            $ranges[] = ['min' => $avgQty + 1, 'max' => $maxQty];
-        }
-        
-        $ranges[] = ['min' => $maxQty + 1, 'max' => null];
-
-        return $ranges;
-    }
 }

@@ -199,7 +199,7 @@ class CustomerCustomPricingController extends Controller
      */
     public function updateCustomPrice(Request $request, int $priceId): JsonResponse
     {
-        $request->validate([
+        $validatedData = $request->validate([
             'min_quantity' => 'sometimes|integer|min:1',
             'max_quantity' => 'nullable|integer|gt:min_quantity',
             'price' => 'sometimes|numeric|min:0',
@@ -212,7 +212,18 @@ class CustomerCustomPricingController extends Controller
 
         try {
             $customPrice = CustomerCustomPrice::findOrFail($priceId);
-            $customPrice->update($request->validated());
+
+            // Auto-generate label if not provided
+            if (empty($validatedData['label']) && isset($validatedData['min_quantity'])) {
+                // We include max_quantity only if it's in the request
+                $priceData = [
+                    'min_quantity' => $validatedData['min_quantity'],
+                    'max_quantity' => $validatedData['max_quantity'] ?? null,
+                ];
+                $validatedData['label'] = $this->customPricingService->generateDefaultLabel($priceData);
+            }
+
+            $customPrice->update($validatedData);
 
             return response()->json([
                 'status' => 'success',
@@ -226,6 +237,7 @@ class CustomerCustomPricingController extends Controller
             ], 400);
         }
     }
+
 
     /**
      * Delete custom price

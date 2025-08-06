@@ -688,6 +688,8 @@ class InventoryService
                         'quantity_received' => $receivedItem->received_quantity,
                         'payment_status' => 'N/A',
                         'supplier' => 'N/A',
+                        'cost_price' => $receivedItem->cost_price,
+                        'sold_quantity' => $receivedItem->sold_quantity,
                         'distribution_price' => $receivedItem->distribution_price,
                         'received_at' => $receivedItem->created_at ? $receivedItem->created_at->format('Y-m-d') : 'N/A',
                         'received_item_id' => $receivedItem->received_item_id
@@ -703,6 +705,8 @@ class InventoryService
                     'quantity_received' => $receivedItem->received_quantity,
                     'payment_status' => isset($purchaseOrder->is_paid) ? ($purchaseOrder->is_paid ? 'Paid' : 'Unpaid') : 'N/A',
                     'supplier' => $supplier,
+                    'cost_price' => $receivedItem->cost_price,
+                    'sold_quantity' => $receivedItem->sold_quantity,
                     'distribution_price' => $receivedItem->distribution_price,
                     'received_at' => $purchaseOrder->created_at ? $purchaseOrder->created_at->format('Y-m-d') : 'N/A',
                     'received_item_id' => $receivedItem->received_item_id

@@ -502,46 +502,25 @@ public function updateStatus(Request $request, String $poNumber)
 protected function updateProductQuantity(PurchaseOrderReceivedItem $receivedItem): void
 {
     try {
-        // Find the product
-        $product = Product::findOrFail($receivedItem->product_id);
-        
-        // Store the current quantity for logging
-        $quantityBefore = $product->quantity ?? 0;
-        
-        // Calculate new quantity
-        $newQuantity = $quantityBefore + $receivedItem->received_quantity;
-        
-        // Update the product quantity
-        $product->quantity = $newQuantity;
-        $product->save();
-        
         // Find or create an inventory record for this product
         $inventory = Inventory::firstOrCreate(
             ['product_id' => $receivedItem->product_id],
             [
-                'quantity' => $newQuantity,  // Set to the same as product quantity
+                'quantity' => 0,  // Initialize with 0 for new records
                 'avg_cost_price' => $receivedItem->cost_price,
                 'last_received_at' => now(),
                 'recount_needed' => false
             ]
         );
         
-        // If the inventory record already existed, update its values to match current product
-        if ($inventory->wasRecentlyCreated === false) {
-            $inventory->quantity = $newQuantity;
-            
-            // Update average cost price
-            if ($inventory->avg_cost_price > 0 && $inventory->quantity > 0) {
-                $currentValue = ($inventory->quantity - $receivedItem->received_quantity) * $inventory->avg_cost_price;
-                $newValue = $receivedItem->received_quantity * $receivedItem->cost_price;
-                $inventory->avg_cost_price = ($currentValue + $newValue) / $inventory->quantity;
-            } else {
-                $inventory->avg_cost_price = $receivedItem->cost_price;
-            }
-            
-            $inventory->last_received_at = now();
-            $inventory->save();
-        }
+        // Store the current quantity for logging
+        $quantityBefore = $inventory->quantity;
+        
+        // Update inventory using the built-in method that handles average cost calculation
+        $inventory->incrementQuantity($receivedItem->received_quantity, $receivedItem->cost_price);
+        
+        // Calculate new quantity for logging
+        $quantityAfter = $inventory->quantity;
         
         // Create log entry for tracking
         InventoryLog::create([
@@ -552,21 +531,21 @@ protected function updateProductQuantity(PurchaseOrderReceivedItem $receivedItem
             'reference_id' => $receivedItem->rr_id,
             'quantity' => $receivedItem->received_quantity,
             'quantity_before' => $quantityBefore,
-            'quantity_after' => $newQuantity,
+            'quantity_after' => $quantityAfter,
             'cost_price' => $receivedItem->cost_price,
             'notes' => "Received from receiving report #{$receivedItem->rr_id}"
         ]);
         
-        Log::info('Product quantity and inventory updated successfully', [
-            'product_id' => $product->id,
+        Log::info('Inventory updated successfully', [
+            'product_id' => $receivedItem->product_id,
             'quantity_before' => $quantityBefore,
             'added_quantity' => $receivedItem->received_quantity,
-            'new_quantity' => $newQuantity,
+            'new_quantity' => $quantityAfter,
             'inventory_created' => $inventory->wasRecentlyCreated
         ]);
         
     } catch (Exception $e) {
-        Log::error('Failed to update product quantity and inventory for received item', [
+        Log::error('Failed to update inventory for received item', [
             'error' => $e->getMessage(),
             'product_id' => $receivedItem->product_id,
             'quantity' => $receivedItem->received_quantity
