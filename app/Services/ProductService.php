@@ -81,28 +81,29 @@ class ProductService
             $prefix = $category->prefix;
             
             // Get product type (default to 'F' for finished products)
-            $type = $data['product_type'] ;
+            $type = $data['product_type'];
             $typeCode = self::PRODUCT_TYPES[$type];
-
+            
             // Get the current year's last 2 digits
             $year = Carbon::now()->format('y');
-
+            
             // Get the last product number for this category and year
-            $lastProduct = Product::where('product_code', 'like', "{$prefix}-{$typeCode}-{$year}%")
+            // Include soft-deleted records to prevent duplicate codes
+            $lastProduct = Product::withTrashed()
+                                ->where('product_code', 'like', "{$prefix}-{$typeCode}-{$year}%")
                                 ->orderBy('product_code', 'desc')
                                 ->first();
-        
-                                Log::alert($prefix. " ". $typeCode. " ". $year);
-                                Log::alert($lastProduct);
 
-
+            Log::alert($prefix. " ". $typeCode. " ". $year);
+            Log::alert($lastProduct);
+            
             if ($lastProduct) {
                 $lastNumber = (int) substr($lastProduct->product_code, -4);
                 $newNumber = $lastNumber + 1;
             } else {
                 $newNumber = 1;
             }
-
+            
             // Format: XXX-T-YY-NNNN
             return sprintf(
                 '%s-%s-%s-%04d',
@@ -115,7 +116,6 @@ class ProductService
             throw new Exception("Error generating product code: " . $e->getMessage());
         }
     }
-
     public function getAllProducts(): Collection
     {
         return Product::with(['category', 'attribute', 'inventory'])
