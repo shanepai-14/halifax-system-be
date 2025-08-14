@@ -247,6 +247,8 @@ class SaleService
             throw $e;
         }
     }
+
+    
     
 /**
      * Process and add sale items
@@ -819,178 +821,134 @@ class SaleService
     }
 
 
-// In SaleService.php
-public function getCustomerPurchaseHistory(int $customerId, int $page = 1, int $perPage = 50): array
-{
-    // Get the customer
-    $customer = Customer::findOrFail($customerId);
-    
-    // Query to get all sales for this customer (for counting total)
-    $salesQuery = Sale::where('sales.customer_id', $customerId)
-        ->where('sales.status', '!=', Sale::STATUS_CANCELLED);
-    
-    // Get total count for pagination
-    $totalItems = DB::table('sales')
+    // In SaleService.php
+    public function getCustomerPurchaseHistory(int $customerId, int $page = 1, int $perPage = 50): array
+    {
+        // Get the customer
+        $customer = Customer::findOrFail($customerId);
+        
+        // Query to get all sales for this customer (for counting total)
+        $salesQuery = Sale::where('sales.customer_id', $customerId)
+            ->where('sales.status', '!=', Sale::STATUS_CANCELLED);
+        
+        // Get total count for pagination
+        $totalItems = DB::table('sales')
+            ->where('sales.customer_id', $customerId)
+            ->where('sales.status', '!=', Sale::STATUS_CANCELLED)
+            ->join('sale_items', 'sales.id', '=', 'sale_items.sale_id')
+            ->count();
+        
+        // Get all sales with items (paginated)
+        $sales = Sale::with([
+            'items.product',
+        ])
         ->where('sales.customer_id', $customerId)
         ->where('sales.status', '!=', Sale::STATUS_CANCELLED)
-        ->join('sale_items', 'sales.id', '=', 'sale_items.sale_id')
-        ->count();
-    
-    // Get all sales with items (paginated)
-    $sales = Sale::with([
-        'items.product',
-    ])
-    ->where('sales.customer_id', $customerId)
-    ->where('sales.status', '!=', Sale::STATUS_CANCELLED)
-    ->orderBy('order_date', 'desc')
-    ->get();
-    
-    // Format the data to focus on items with pagination
-    $allPurchaseItems = [];
-    
-    foreach ($sales as $sale) {
-        foreach ($sale->items as $item) {
-            $allPurchaseItems[] = [
-                'sale_id' => $sale->id,
-                'invoice_number' => $sale->invoice_number,
-                'order_date' => $sale->order_date,
-                'delivery_date' => $sale->delivery_date,
-                'item_id' => $item->id,
-                'product_id' => $item->product_id,
-                'product_name' => $item->product->product_name ?? "Product #{$item->product_id}",
-                'product_code' => $item->product->product_code ?? "P-{$item->product_id}",
-                'quantity' => $item->quantity,
-                'price' => $item->sold_price,
-                'discount' => $item->discount,
-                'total' => $item->total_sold_price,
-                'total_sale_amount' => $sale->total,
-                'status' => $sale->status
-            ];
+        ->orderBy('order_date', 'desc')
+        ->get();
+        
+        // Format the data to focus on items with pagination
+        $allPurchaseItems = [];
+        
+        foreach ($sales as $sale) {
+            foreach ($sale->items as $item) {
+                $allPurchaseItems[] = [
+                    'sale_id' => $sale->id,
+                    'invoice_number' => $sale->invoice_number,
+                    'order_date' => $sale->order_date,
+                    'delivery_date' => $sale->delivery_date,
+                    'item_id' => $item->id,
+                    'product_id' => $item->product_id,
+                    'product_name' => $item->product->product_name ?? "Product #{$item->product_id}",
+                    'product_code' => $item->product->product_code ?? "P-{$item->product_id}",
+                    'quantity' => $item->quantity,
+                    'price' => $item->sold_price,
+                    'discount' => $item->discount,
+                    'total' => $item->total_sold_price,
+                    'total_sale_amount' => $sale->total,
+                    'status' => $sale->status
+                ];
+            }
         }
-    }
-    
-    // Apply pagination to the collected items
-    $offset = ($page - 1) * $perPage;
-    $paginatedItems = array_slice($allPurchaseItems, $offset, $perPage);
-    
-    // Group items by invoice for "By Orders" tab
-    $itemsByInvoice = [];
-    foreach ($allPurchaseItems as $item) {
-        $invoiceNumber = $item['invoice_number'];
-        if (!isset($itemsByInvoice[$invoiceNumber])) {
-            $itemsByInvoice[$invoiceNumber] = [];
+        
+        // Apply pagination to the collected items
+        $offset = ($page - 1) * $perPage;
+        $paginatedItems = array_slice($allPurchaseItems, $offset, $perPage);
+        
+        // Group items by invoice for "By Orders" tab
+        $itemsByInvoice = [];
+        foreach ($allPurchaseItems as $item) {
+            $invoiceNumber = $item['invoice_number'];
+            if (!isset($itemsByInvoice[$invoiceNumber])) {
+                $itemsByInvoice[$invoiceNumber] = [];
+            }
+            $itemsByInvoice[$invoiceNumber][] = $item;
         }
-        $itemsByInvoice[$invoiceNumber][] = $item;
+        
+        // Calculate summary statistics
+        $totalOrders = count($itemsByInvoice);
+        $totalQuantity = array_sum(array_column($allPurchaseItems, 'quantity'));
+        $totalValue = array_sum(array_column($allPurchaseItems, 'total'));
+        
+        return [
+            'customer' => $customer,
+            'stats' => [
+                'total_orders' => $totalOrders,
+                'total_items' => count($allPurchaseItems),
+                'total_quantity' => $totalQuantity,
+                'total_value' => $totalValue
+            ],
+            'items' => $paginatedItems,
+            'items_by_invoice' => $itemsByInvoice,
+            'pagination' => [
+                'current_page' => $page,
+                'per_page' => $perPage,
+                'total_items' => $totalItems,
+                'has_more' => $totalItems > ($page * $perPage)
+            ]
+        ];
     }
-    
-    // Calculate summary statistics
-    $totalOrders = count($itemsByInvoice);
-    $totalQuantity = array_sum(array_column($allPurchaseItems, 'quantity'));
-    $totalValue = array_sum(array_column($allPurchaseItems, 'total'));
-    
-    return [
-        'customer' => $customer,
-        'stats' => [
-            'total_orders' => $totalOrders,
-            'total_items' => count($allPurchaseItems),
-            'total_quantity' => $totalQuantity,
-            'total_value' => $totalValue
-        ],
-        'items' => $paginatedItems,
-        'items_by_invoice' => $itemsByInvoice,
-        'pagination' => [
-            'current_page' => $page,
-            'per_page' => $perPage,
-            'total_items' => $totalItems,
-            'has_more' => $totalItems > ($page * $perPage)
-        ]
-    ];
-}
 
-// For better performance, here's an optimized version that does proper pagination at the database level
-public function getCustomerPurchaseHistoryOptimized(int $customerId, int $page = 1, int $perPage = 50): array
-{
-    // Get the customer
-    $customer = Customer::findOrFail($customerId);
-    
-    // Count total items for pagination
-    $totalItems = DB::table('sale_items')
-        ->join('sales', 'sale_items.sale_id', '=', 'sales.id')
-        ->where('sales.customer_id', $customerId)
-        ->where('sales.status', '!=', Sale::STATUS_CANCELLED)
-        ->count();
-    
-    // Get paginated items
-    $paginatedItems = DB::table('sale_items')
-        ->select([
-            'sale_items.id as item_id',
-            'sale_items.product_id',
-            'sale_items.quantity',
-            'sale_items.sold_price as price',
-            'sale_items.discount',
-            'sale_items.total_sold_price as total',
-            'sales.id as sale_id',
-            'sales.invoice_number',
-            'sales.order_date',
-            'sales.delivery_date',
-            'sales.status',
-            'products.product_name',
-            'products.product_code'
-        ])
-        ->join('sales', 'sale_items.sale_id', '=', 'sales.id')
-        ->join('products', 'sale_items.product_id', '=', 'products.id')
-        ->where('sales.customer_id', $customerId)
-        ->where('sales.status', '!=', Sale::STATUS_CANCELLED)
-        ->orderBy('sales.order_date', 'desc')
-        ->skip(($page - 1) * $perPage)
-        ->take($perPage)
-        ->get()
-        ->map(function ($item) {
-            // Format the data
-            return [
-                'item_id' => $item->item_id,
-                'sale_id' => $item->sale_id,
-                'invoice_number' => $item->invoice_number,
-                'order_date' => $item->order_date,
-                'delivery_date' => $item->delivery_date,
-                'product_id' => $item->product_id,
-                'product_name' => $item->product_name ?? "Product #{$item->product_id}",
-                'product_code' => $item->product_code ?? "P-{$item->product_id}",
-                'quantity' => $item->quantity,
-                'price' => $item->price,
-                'discount' => $item->discount,
-                'total' => $item->total,
-                'status' => $item->status
-            ];
-        })
-        ->toArray();
-    
-    // Get all items grouped by invoice (for the "By Orders" tab)
-    $itemsByInvoice = DB::table('sale_items')
-        ->select([
-            'sale_items.id as item_id',
-            'sale_items.product_id',
-            'sale_items.quantity',
-            'sale_items.sold_price as price',
-            'sale_items.discount',
-            'sale_items.total_sold_price as total',
-            'sales.id as sale_id',
-            'sales.invoice_number',
-            'sales.order_date',
-            'sales.delivery_date',
-            'sales.status',
-            'products.product_name',
-            'products.product_code'
-        ])
-        ->join('sales', 'sale_items.sale_id', '=', 'sales.id')
-        ->join('products', 'sale_items.product_id', '=', 'products.id')
-        ->where('sales.customer_id', $customerId)
-        ->where('sales.status', '!=', Sale::STATUS_CANCELLED)
-        ->orderBy('sales.order_date', 'desc')
-        ->get()
-        ->groupBy('invoice_number')
-        ->map(function ($items) {
-            return $items->map(function ($item) {
+    // For better performance, here's an optimized version that does proper pagination at the database level
+    public function getCustomerPurchaseHistoryOptimized(int $customerId, int $page = 1, int $perPage = 50): array
+    {
+        // Get the customer
+        $customer = Customer::findOrFail($customerId);
+        
+        // Count total items for pagination
+        $totalItems = DB::table('sale_items')
+            ->join('sales', 'sale_items.sale_id', '=', 'sales.id')
+            ->where('sales.customer_id', $customerId)
+            ->where('sales.status', '!=', Sale::STATUS_CANCELLED)
+            ->count();
+        
+        // Get paginated items
+        $paginatedItems = DB::table('sale_items')
+            ->select([
+                'sale_items.id as item_id',
+                'sale_items.product_id',
+                'sale_items.quantity',
+                'sale_items.sold_price as price',
+                'sale_items.discount',
+                'sale_items.total_sold_price as total',
+                'sales.id as sale_id',
+                'sales.invoice_number',
+                'sales.order_date',
+                'sales.delivery_date',
+                'sales.status',
+                'products.product_name',
+                'products.product_code'
+            ])
+            ->join('sales', 'sale_items.sale_id', '=', 'sales.id')
+            ->join('products', 'sale_items.product_id', '=', 'products.id')
+            ->where('sales.customer_id', $customerId)
+            ->where('sales.status', '!=', Sale::STATUS_CANCELLED)
+            ->orderBy('sales.order_date', 'desc')
+            ->skip(($page - 1) * $perPage)
+            ->take($perPage)
+            ->get()
+            ->map(function ($item) {
+                // Format the data
                 return [
                     'item_id' => $item->item_id,
                     'sale_id' => $item->sale_id,
@@ -1006,37 +964,602 @@ public function getCustomerPurchaseHistoryOptimized(int $customerId, int $page =
                     'total' => $item->total,
                     'status' => $item->status
                 ];
-            });
-        })
-        ->toArray();
-    
-    // Calculate statistics
-    $statsQuery = DB::table('sale_items')
-        ->join('sales', 'sale_items.sale_id', '=', 'sales.id')
-        ->where('sales.customer_id', $customerId)
-        ->where('sales.status', '!=', Sale::STATUS_CANCELLED);
-    
-    $totalQuantity = $statsQuery->sum('sale_items.quantity');
-    $totalValue = $statsQuery->sum('sale_items.total_sold_price');
-    $totalOrders = count($itemsByInvoice);
-    
-    return [
-        'customer' => $customer,
-        'stats' => [
-            'total_orders' => $totalOrders,
-            'total_items' => $totalItems,
-            'total_quantity' => $totalQuantity,
-            'total_value' => $totalValue
-        ],
-        'items' => $paginatedItems,
-        'items_by_invoice' => $itemsByInvoice,
-        'pagination' => [
-            'current_page' => $page,
-            'per_page' => $perPage,
-            'total_items' => $totalItems,
-            'has_more' => $totalItems > ($page * $perPage)
-        ]
-    ];
-}
+            })
+            ->toArray();
+        
+        // Get all items grouped by invoice (for the "By Orders" tab)
+        $itemsByInvoice = DB::table('sale_items')
+            ->select([
+                'sale_items.id as item_id',
+                'sale_items.product_id',
+                'sale_items.quantity',
+                'sale_items.sold_price as price',
+                'sale_items.discount',
+                'sale_items.total_sold_price as total',
+                'sales.id as sale_id',
+                'sales.invoice_number',
+                'sales.order_date',
+                'sales.delivery_date',
+                'sales.status',
+                'products.product_name',
+                'products.product_code'
+            ])
+            ->join('sales', 'sale_items.sale_id', '=', 'sales.id')
+            ->join('products', 'sale_items.product_id', '=', 'products.id')
+            ->where('sales.customer_id', $customerId)
+            ->where('sales.status', '!=', Sale::STATUS_CANCELLED)
+            ->orderBy('sales.order_date', 'desc')
+            ->get()
+            ->groupBy('invoice_number')
+            ->map(function ($items) {
+                return $items->map(function ($item) {
+                    return [
+                        'item_id' => $item->item_id,
+                        'sale_id' => $item->sale_id,
+                        'invoice_number' => $item->invoice_number,
+                        'order_date' => $item->order_date,
+                        'delivery_date' => $item->delivery_date,
+                        'product_id' => $item->product_id,
+                        'product_name' => $item->product_name ?? "Product #{$item->product_id}",
+                        'product_code' => $item->product_code ?? "P-{$item->product_id}",
+                        'quantity' => $item->quantity,
+                        'price' => $item->price,
+                        'discount' => $item->discount,
+                        'total' => $item->total,
+                        'status' => $item->status
+                    ];
+                });
+            })
+            ->toArray();
+        
+        // Calculate statistics
+        $statsQuery = DB::table('sale_items')
+            ->join('sales', 'sale_items.sale_id', '=', 'sales.id')
+            ->where('sales.customer_id', $customerId)
+            ->where('sales.status', '!=', Sale::STATUS_CANCELLED);
+        
+        $totalQuantity = $statsQuery->sum('sale_items.quantity');
+        $totalValue = $statsQuery->sum('sale_items.total_sold_price');
+        $totalOrders = count($itemsByInvoice);
+        
+        return [
+            'customer' => $customer,
+            'stats' => [
+                'total_orders' => $totalOrders,
+                'total_items' => $totalItems,
+                'total_quantity' => $totalQuantity,
+                'total_value' => $totalValue
+            ],
+            'items' => $paginatedItems,
+            'items_by_invoice' => $itemsByInvoice,
+            'pagination' => [
+                'current_page' => $page,
+                'per_page' => $perPage,
+                'total_items' => $totalItems,
+                'has_more' => $totalItems > ($page * $perPage)
+            ]
+        ];
+    }
 
+    public function updateSaleWithItems(int $saleId, array $data): Sale
+    {
+        try {
+            DB::beginTransaction();
+            
+            // Get the existing sale
+            $sale = Sale::with(['items.product', 'customer'])->findOrFail($saleId);
+            
+            // Check if sale can be edited
+            if ($sale->status === Sale::STATUS_CANCELLED) {
+                throw new Exception('Cannot edit a cancelled sale');
+            }
+            
+            if ($sale->status === Sale::STATUS_COMPLETED) {
+                throw new Exception('Cannot edit a completed sale');
+            }
+            
+            // Handle customer updates
+            if (!empty($data['customer'])) {
+                $customerData = $data['customer'];
+                
+                if (!empty($customerData['id'])) {
+                    $customer = Customer::find($customerData['id']);
+                    $data['customer_id'] = $customer->id;
+                } else if (!empty($customerData['customer_name'])) {
+                    // Create a new customer if needed
+                    $customer = Customer::create([
+                        'customer_name' => $customerData['customer_name'],
+                        'contact_number' => $customerData['contact_number'] ?? null,
+                        'email' => $customerData['email'] ?? null,
+                        'address' => $customerData['address'] ?? null,
+                        'city' => $customerData['city'] ?? null,
+                    ]);
+                    $data['customer_id'] = $customer->id;
+                }
+            }
+            
+            // Store original items for inventory restoration
+            $originalItems = $sale->items->keyBy('id');
+            
+            // Update sale basic information
+            $sale->update([
+                'customer_id' => $data['customer_id'] ?? $sale->customer_id,
+                'payment_method' => $data['payment_method'],
+                'delivery_date' => Carbon::parse($data['delivery_date'])->format('Y-m-d'),
+                'address' => $data['address'],
+                'city' => $data['city'],
+                'phone' => $data['phone'],
+                'term_days' => $data['term_days'] ?? 0,
+                'delivery_fee' => $data['delivery_fee'] ?? 0,
+                'cutting_charges' => $data['cutting_charges'] ?? 0,
+            ]);
+            
+            // Handle removed items first - restore FIFO batches
+            if (!empty($data['removed_items'])) {
+                foreach ($data['removed_items'] as $removedItemId) {
+                    $removedItem = $originalItems->get($removedItemId);
+                    if ($removedItem) {
+                        // Restore FIFO batches for removed item
+                        $this->restoreFifoBatchesForItem($removedItem);
+                        // Restore inventory for removed item
+                        $this->restoreInventoryForItem($removedItem);
+                        // Delete the item
+                        $removedItem->delete();
+                    }
+                }
+            }
+            
+            // Process sale items with FIFO batch management
+            $this->updateSaleItemsWithFifo($sale, $data['items'], $originalItems);
+            
+            // Recalculate totals
+            $this->recalculateSaleTotals($sale);
+            
+            DB::commit();
+            
+            // Return updated sale with relationships
+            return $this->getSaleById($sale->id);
+            
+        } catch (Exception $e) {
+            DB::rollBack();
+            throw $e;
+        }
+    }
+
+    /**
+     * Update sale items with FIFO batch management
+     */
+    private function updateSaleItemsWithFifo(Sale $sale, array $items, $originalItems)
+    {
+        $deliveryFee = $sale->delivery_fee ?? 0;
+        $cuttingCharges = $sale->cutting_charges ?? 0;
+        $otherCharges = $deliveryFee + $cuttingCharges;
+        
+        foreach ($items as $itemData) {
+            $product = Product::with(['inventory'])->findOrFail($itemData['product_id']);
+            
+            if (!empty($itemData['id']) && $originalItems->has($itemData['id'])) {
+                // Update existing item
+                $existingItem = $originalItems->get($itemData['id']);
+                $quantityDifference = $itemData['quantity'] - $existingItem->quantity;
+                
+                if ($quantityDifference != 0) {
+                    // Handle FIFO batch adjustments for quantity changes
+                    $this->adjustFifoBatchesForQuantityChange($existingItem, $quantityDifference);
+                    
+                    // Update inventory
+                    $this->updateInventoryForQuantityChange($product, $quantityDifference);
+                    
+                    // Recalculate FIFO cost for the new quantity
+                    $newFifoCost = $this->calculateFifoCostForQuantity($product->id, $itemData['quantity']);
+                    $newDistributionPrice = $itemData['quantity'] > 0 ? $newFifoCost / $itemData['quantity'] : 0;
+                    
+                    // Update the sale item
+                    $existingItem->update([
+                        'quantity' => $itemData['quantity'],
+                        'distribution_price' => $newDistributionPrice,
+                        'total_distribution_price' => $newFifoCost,
+                        'sold_price' => $itemData['sold_price'],
+                        'discount' => $itemData['discount'] ?? 0,
+                        'price_type' => $itemData['price_type'] ?? 'regular',
+                        'composition' => $itemData['composition'] ?? null,
+                    ]);
+                    
+                    // Recalculate total sold price
+                    $totalSoldBeforeDiscount = $itemData['sold_price'] * $itemData['quantity'];
+                    $discountAmount = (($itemData['discount'] ?? 0) / 100) * $totalSoldBeforeDiscount;
+                    $totalSoldPrice = $totalSoldBeforeDiscount - $discountAmount;
+                    
+                    $existingItem->update(['total_sold_price' => $totalSoldPrice]);
+                    
+
+                    
+                } else {
+                    // Only price/discount changes, no quantity change
+                    $existingItem->update([
+                        'sold_price' => $itemData['sold_price'],
+                        'discount' => $itemData['discount'] ?? 0,
+                        'price_type' => $itemData['price_type'] ?? 'regular',
+                        'composition' => $itemData['composition'] ?? null,
+                    ]);
+                    
+                    // Recalculate total sold price
+                    $totalSoldBeforeDiscount = $itemData['sold_price'] * $itemData['quantity'];
+                    $discountAmount = (($itemData['discount'] ?? 0) / 100) * $totalSoldBeforeDiscount;
+                    $totalSoldPrice = $totalSoldBeforeDiscount - $discountAmount;
+                    
+                    $existingItem->update(['total_sold_price' => $totalSoldPrice]);
+                }
+                
+            } else {
+                // Create new item with FIFO processing
+                $newSaleItem = $this->createNewSaleItemWithFifo($sale, $product, $itemData);
+                
+            }
+        }
+    }
+
+    /**
+     * Restore FIFO batches when item is removed
+     */
+    private function restoreFifoBatchesForItem($saleItem)
+    {
+        $productId = $saleItem->product_id;
+        $quantityToRestore = $saleItem->quantity;
+        
+        // Get batches that have sold quantities (reverse FIFO - newest first for restoration)
+        $batches = PurchaseOrderReceivedItem::where('product_id', $productId)
+            ->where('sold_quantity', '>', 0)
+            ->orderBy('created_at', 'desc') // Newest first for restoration
+            ->get();
+        
+        $remainingToRestore = $quantityToRestore;
+        
+        foreach ($batches as $batch) {
+            if ($remainingToRestore <= 0) break;
+            
+            $soldQuantity = $batch->sold_quantity;
+            $restoreQuantity = min($soldQuantity, $remainingToRestore);
+            
+            // Reduce sold quantity for this batch
+            $batch->sold_quantity -= $restoreQuantity;
+            // Update fully_consumed flag
+            $batch->fully_consumed = ($batch->received_quantity <= $batch->sold_quantity);
+            $batch->save();
+            
+            $remainingToRestore -= $restoreQuantity;
+            
+            Log::info("Restored {$restoreQuantity} units to batch {$batch->id} for product {$productId}");
+        }
+    }
+
+    /**
+     * Adjust FIFO batches for quantity changes in existing items
+     */
+    private function adjustFifoBatchesForQuantityChange($saleItem, $quantityDifference)
+    {
+        $productId = $saleItem->product_id;
+        
+        if ($quantityDifference > 0) {
+            // Quantity increased - allocate more from FIFO batches
+            $this->allocateFromFifoBatches($productId, $quantityDifference);
+        } else if ($quantityDifference < 0) {
+            // Quantity decreased - restore to FIFO batches
+            $quantityToRestore = abs($quantityDifference);
+            $this->restoreToFifoBatches($productId, $quantityToRestore);
+        }
+    }
+
+    /**
+     * Allocate quantity from FIFO batches
+     */
+    private function allocateFromFifoBatches($productId, $quantityToAllocate)
+    {
+        // Get available batches ordered by received date (FIFO)
+        $receivedItems = PurchaseOrderReceivedItem::where('product_id', $productId)
+            ->whereRaw('received_quantity > sold_quantity')
+            ->orderBy('created_at', 'asc')
+            ->get();
+        
+        $remainingToAllocate = $quantityToAllocate;
+        
+        foreach ($receivedItems as $receivedItem) {
+            if ($remainingToAllocate <= 0) break;
+            
+            $availableQuantity = $receivedItem->received_quantity - $receivedItem->sold_quantity;
+            $quantityFromBatch = min($availableQuantity, $remainingToAllocate);
+            
+            // Update the sold quantity in this batch
+            $receivedItem->sold_quantity += $quantityFromBatch;
+            $receivedItem->fully_consumed = ($receivedItem->received_quantity <= $receivedItem->sold_quantity);
+            $receivedItem->save();
+            
+            $remainingToAllocate -= $quantityFromBatch;
+            
+            Log::info("Allocated {$quantityFromBatch} units from batch {$receivedItem->id} for product {$productId}");
+        }
+        
+        if ($remainingToAllocate > 0) {
+            throw new Exception("Insufficient inventory in FIFO batches for product ID: {$productId}. Remaining needed: {$remainingToAllocate}");
+        }
+    }
+
+    /**
+     * Restore quantity to FIFO batches (reverse FIFO)
+     */
+    private function restoreToFifoBatches($productId, $quantityToRestore)
+    {
+        // Get batches that have sold quantities (reverse FIFO - newest first for restoration)
+        $batches = PurchaseOrderReceivedItem::where('product_id', $productId)
+            ->where('sold_quantity', '>', 0)
+            ->orderBy('created_at', 'desc') // Newest first for restoration
+            ->get();
+        
+        $remainingToRestore = $quantityToRestore;
+        
+        foreach ($batches as $batch) {
+            if ($remainingToRestore <= 0) break;
+            
+            $soldQuantity = $batch->sold_quantity;
+            $restoreQuantity = min($soldQuantity, $remainingToRestore);
+            
+            // Reduce sold quantity for this batch
+            $batch->sold_quantity -= $restoreQuantity;
+            // Update fully_consumed flag
+            $batch->fully_consumed = ($batch->received_quantity <= $batch->sold_quantity);
+            $batch->save();
+            
+            $remainingToRestore -= $restoreQuantity;
+            
+            Log::info("Restored {$restoreQuantity} units to batch {$batch->id} for product {$productId}");
+        }
+    }
+
+    /**
+     * Calculate FIFO cost for a specific quantity
+     */
+    private function calculateFifoCostForQuantity($productId, $quantity)
+    {
+        // Get available batches ordered by received date (FIFO)
+        $receivedItems = PurchaseOrderReceivedItem::where('product_id', $productId)
+            ->whereRaw('received_quantity > sold_quantity')
+            ->orderBy('created_at', 'asc')
+            ->get();
+        
+        $remainingToAllocate = $quantity;
+        $totalFifoCost = 0;
+        
+        foreach ($receivedItems as $receivedItem) {
+            if ($remainingToAllocate <= 0) break;
+            
+            $availableQuantity = $receivedItem->received_quantity - $receivedItem->sold_quantity;
+            $quantityFromBatch = min($availableQuantity, $remainingToAllocate);
+            $costFromBatch = $quantityFromBatch * $receivedItem->distribution_price;
+            
+            $totalFifoCost += $costFromBatch;
+            $remainingToAllocate -= $quantityFromBatch;
+        }
+        
+        // Handle any remaining quantity using latest cost as fallback
+        if ($remainingToAllocate > 0) {
+            $latestItem = PurchaseOrderReceivedItem::where('product_id', $productId)
+                ->orderBy('created_at', 'desc')
+                ->first();
+            
+            $fallbackCost = $latestItem ? $latestItem->distribution_price : 0;
+            $fallbackTotal = $remainingToAllocate * $fallbackCost;
+            
+            $totalFifoCost += $fallbackTotal;
+        }
+        
+        return $totalFifoCost;
+    }
+
+    /**
+     * Create new sale item with FIFO processing
+     */
+    private function createNewSaleItemWithFifo(Sale $sale, Product $product, array $itemData)
+    {
+        $availableInventory = $product->inventory ? $product->inventory->quantity : 0;
+        if ($itemData['quantity'] > $availableInventory) {
+            throw new Exception("Insufficient inventory for {$product->product_name}. Available: {$availableInventory}, Requested: {$itemData['quantity']}");
+        }
+        
+        // Process FIFO costing for new item
+        $remainingToAllocate = $itemData['quantity'];
+        $totalFifoCost = 0;
+        
+        // Get available batches ordered by received date (FIFO)
+        $receivedItems = PurchaseOrderReceivedItem::where('product_id', $product->id)
+            ->whereRaw('received_quantity > sold_quantity')
+            ->orderBy('created_at', 'asc')
+            ->get();
+        
+        foreach ($receivedItems as $receivedItem) {
+            if ($remainingToAllocate <= 0) break;
+            
+            $availableQuantity = $receivedItem->received_quantity - $receivedItem->sold_quantity;
+            $quantityFromBatch = min($availableQuantity, $remainingToAllocate);
+            $costFromBatch = $quantityFromBatch * $receivedItem->distribution_price;
+            
+            // Update the sold quantity in this batch
+            $receivedItem->sold_quantity += $quantityFromBatch;
+            $receivedItem->fully_consumed = ($receivedItem->received_quantity <= $receivedItem->sold_quantity);
+            $receivedItem->save();
+            
+            // Add to our total cost
+            $totalFifoCost += $costFromBatch;
+            $remainingToAllocate -= $quantityFromBatch;
+        }
+        
+        // Handle any remaining quantity (inventory discrepancy)
+        if ($remainingToAllocate > 0) {
+            // Get the latest cost as fallback
+            $latestItem = PurchaseOrderReceivedItem::where('product_id', $product->id)
+                ->orderBy('created_at', 'desc')
+                ->first();
+            
+            $fallbackCost = $latestItem ? $latestItem->distribution_price : 0;
+            $fallbackTotal = $remainingToAllocate * $fallbackCost;
+            
+            $totalFifoCost += $fallbackTotal;
+        }
+        
+        // Calculate the average FIFO cost
+        $distributionPrice = $itemData['quantity'] > 0 ? $totalFifoCost / $itemData['quantity'] : 0;
+        
+        // Calculate totals
+        $totalSoldBeforeDiscount = $itemData['sold_price'] * $itemData['quantity'];
+        $discountAmount = (($itemData['discount'] ?? 0) / 100) * $totalSoldBeforeDiscount;
+        $totalSoldPrice = $totalSoldBeforeDiscount - $discountAmount;
+        
+        // Create new sale item
+        $saleItem = $sale->items()->create([
+            'product_id' => $itemData['product_id'],
+            'quantity' => $itemData['quantity'],
+            'distribution_price' => $distributionPrice,
+            'total_distribution_price' => $totalFifoCost,
+            'sold_price' => $itemData['sold_price'],
+            'total_sold_price' => $totalSoldPrice,
+            'discount' => $itemData['discount'] ?? 0,
+            'price_type' => $itemData['price_type'] ?? 'regular',
+            'composition' => $itemData['composition'] ?? null,
+        ]);
+        
+        // Update inventory for new item
+        $this->updateInventoryForNewItem($product, $itemData['quantity']);
+        
+        Log::info("Created new sale item with FIFO cost: {$totalFifoCost} for quantity: {$itemData['quantity']}");
+    }
+
+    /**
+     * Restore inventory when item is removed
+     */
+    private function restoreInventoryForItem($saleItem)
+    {
+        $product = Product::with('inventory')->findOrFail($saleItem->product_id);
+        
+        if ($product->inventory) {
+            $product->inventory->increment('quantity', $saleItem->quantity);
+        } else {
+            // Create inventory record if it doesn't exist
+            $product->inventory()->create([
+                'quantity' => $saleItem->quantity,
+                'reorder_level' => $product->reorder_level ?? 0,
+            ]);
+        }
+
+        // Log inventory adjustment
+        InventoryLog::create([
+            'product_id' => $product->id,
+            'type' => 'addition',
+            'quantity' => $saleItem->quantity,
+            'transaction_type' => InventoryLog::TYPE_RETURN,
+            'quantity_before' => ($product->inventory->quantity ?? 0) - $saleItem->quantity,
+            'quantity_after' => $product->inventory->quantity ?? $saleItem->quantity,
+            'reference_type' => 'sale_item_removal',
+            'reference_id' => $saleItem->id,
+            'user_id' => Auth::id(),
+            'notes' => "Inventory restored from sale item removal - Sale #{$saleItem->sale->invoice_number}"
+        ]);
+    }
+
+    /**
+     * Update inventory for quantity changes
+     */
+    private function updateInventoryForQuantityChange(Product $product, int $quantityDifference)
+    {
+            if ($product->inventory) {
+                $previousQuantity = $product->inventory->quantity;
+                $product->inventory->decrement('quantity', $quantityDifference);
+                $newQuantity = $product->inventory->quantity;
+            
+            // Log inventory adjustment
+            InventoryLog::create([
+                'product_id' => $product->id,
+                'type' => $quantityDifference > 0 ? 'reduction' : 'addition',
+                'transaction_type' => $quantityDifference > 0 ? InventoryLog::TYPE_SALES : InventoryLog::TYPE_RETURN,
+                'quantity' => abs($quantityDifference),
+                'quantity_before' => $previousQuantity,
+                'quantity_after' => $newQuantity,
+                'reference_type' => 'sale_update',
+                'reference_id' => $product->id,
+                'user_id' => Auth::id(),
+                'notes' => "Inventory updated from sale modification"
+            ]);
+        }
+    }
+
+    /**
+     * Update inventory for new items
+     */
+    private function updateInventoryForNewItem(Product $product, int $quantity)
+    {
+        if ($product->inventory) {
+            $previousQuantity = $product->inventory->quantity;
+            $product->inventory->decrement('quantity', $quantity);
+            
+            // Log inventory adjustment
+            InventoryLog::create([
+                'product_id' => $product->id,
+                'type' => 'reduction',
+                'transaction_type' => InventoryLog::TYPE_SALES,
+                'quantity' => $quantity,
+                'quantity_before' => $previousQuantity,
+                'quantity_after' => $product->inventory->quantity,
+                'reference_type' => 'sale_update',
+                'reference_id' => $product->id,
+                'user_id' => Auth::id(),
+                'notes' => "Inventory reduced from new sale item"
+            ]);
+        }
+    }
+
+
+    private function recalculateSaleTotals(Sale $sale)
+    {
+        $sale->load('items');
+        
+        $deliveryFee = $sale->delivery_fee ?? 0;
+        $cuttingCharges = $sale->cutting_charges ?? 0;
+        $otherCharges = $deliveryFee + $cuttingCharges;
+  
+        $totalCOGS = 0;
+        $totalRevenue = 0;
+        
+        // Calculate COGS and revenue for each item
+        foreach ($sale->items as $item) {
+
+            // COGS = FIFO cost (total_distribution_price) + item's share of other charges
+            $itemCOGS = ($item->total_distribution_price ?? 0) ;
+            $totalCOGS += $itemCOGS;
+            
+            // Revenue = sold_price * quantity - discount
+            $itemSubtotal = $item->sold_price * $item->quantity;
+            $discountAmount = $itemSubtotal * ($item->discount / 100);
+            $itemRevenue = $itemSubtotal - $discountAmount;
+            $totalRevenue += $itemRevenue;
+            
+            Log::info("Item {$item->id}: FIFO Cost={$item->total_distribution_price}, COGS={$itemCOGS}, Revenue={$itemRevenue}");
+        }
+        
+        // Total amount = revenue + other charges
+        $totalAmount = $totalRevenue + $otherCharges;
+        
+        // Profit = Total Revenue - Total COGS
+        $totalProfit = $totalAmount - $totalCOGS;
+        
+        Log::info("Final Calculation:");
+        Log::info("Total COGS: {$totalCOGS}");
+        Log::info("Total Revenue: {$totalRevenue}");
+        Log::info("Other Charges: {$otherCharges}");
+        Log::info("Total Amount: {$totalAmount}");
+        Log::info("Total Profit: {$totalProfit}");
+        
+        $sale->update([
+            'cogs' => $totalCOGS,
+            'profit' => $totalProfit,
+            'total' => $totalAmount
+        ]);
+    }
 }

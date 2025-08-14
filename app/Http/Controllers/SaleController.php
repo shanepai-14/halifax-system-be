@@ -160,35 +160,52 @@ class SaleController extends Controller
         }
     }
 
-    /**
-     * Update the specified sale
-     *
-     * @param Request $request
-     * @param int $id
-     * @return JsonResponse
-     */
     public function update(Request $request, int $id): JsonResponse
     {
         try {
             $validated = $request->validate([
                 'customer_id' => 'nullable|exists:customers,id',
-                'customer_type' => 'nullable|string',
-                'payment_method' => 'nullable|string',
-                'delivery_date' => 'nullable|date',
-                'address' => 'nullable|string',
-                'city' => 'nullable|string',
-                'phone' => 'nullable|string',
-                'remarks' => 'nullable|string',
-                'is_delivered' => 'nullable|boolean'
+                'customer' => 'nullable|array',
+                'customer.id' => 'nullable|exists:customers,id',
+                'customer.customer_name' => 'nullable|string|max:255',
+                'customer.contact_number' => 'nullable|string|max:20',
+                'customer.email' => 'nullable|email|max:255',
+                'customer.address' => 'nullable|string|max:500',
+                'customer.city' => 'nullable|string|max:100',
+                'payment_method' => 'required|string|in:cash,cod,cheque,online,term',
+                'delivery_date' => 'required|date',
+                'address' => 'required|string|max:500',
+                'city' => 'required|string|max:100',
+                'phone' => 'required|string|max:20',
+                'term_days' => 'nullable|integer|min:0',
+                'delivery_fee' => 'nullable|numeric|min:0',
+                'cutting_charges' => 'nullable|numeric|min:0',
+                'items' => 'required|array|min:1',
+                'items.*.id' => 'nullable|exists:sale_items,id', // For existing items
+                'items.*.product_id' => 'required|exists:products,id',
+                'items.*.quantity' => 'required|integer|min:1',
+                'items.*.distribution_price' => 'required|numeric|min:0',
+                'items.*.sold_price' => 'required|numeric|min:0',
+                'items.*.discount' => 'nullable|numeric|min:0|max:100',
+                'items.*.price_type' => 'nullable|string|in:regular,wholesale,walkin',
+                'items.*.composition' => 'nullable|string',
+                'removed_items' => 'nullable|array',
+                'removed_items.*' => 'exists:sale_items,id'
             ]);
 
-            $sale = $this->saleService->updateSale($id, $validated);
+            $sale = $this->saleService->updateSaleWithItems($id, $validated);
 
             return response()->json([
                 'status' => 'success',
                 'data' => $sale,
                 'message' => 'Sale updated successfully'
             ]);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Validation failed',
+                'errors' => $e->errors()
+            ], 422);
         } catch (Exception $e) {
             return response()->json([
                 'status' => 'error',
