@@ -634,7 +634,7 @@ protected function processSingleTransferItem(Transfer $transfer, array $itemData
      */
     public function getTransferById(int $transferId): Transfer
     {
-        return Transfer::with(['warehouse', 'creator', 'items.product','items.product.attribute'])->findOrFail($transferId);
+        return Transfer::with(['warehouse', 'creator', 'items.product','items.product.attribute', 'items.product.category'])->findOrFail($transferId);
     }
 
     /**
