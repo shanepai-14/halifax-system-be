@@ -29,6 +29,8 @@ use App\Http\Controllers\BracketPricingController;
 use App\Http\Controllers\ReportsController;
 use App\Http\Controllers\PrintController;
 use App\Http\Controllers\CustomerCustomPricingController;
+use App\Http\Controllers\TransferController;
+use App\Http\Controllers\WarehouseController;
 
 
 
@@ -307,6 +309,49 @@ Route::prefix('print')->group(function () {
                     Route::post('/rebuild-summaries', [ReportsController::class, 'rebuildSummaries'])->name('rebuild-summaries');
                     Route::get('/health-check', [ReportsController::class, 'getHealthCheck'])->name('health-check');
                 });
+            });
+
+
+          Route::prefix('transfers')->group(function () {
+                // Main transfer CRUD operations
+                Route::get('/', [TransferController::class, 'index']);
+                Route::post('/', [TransferController::class, 'store']);
+                Route::get('/{id}', [TransferController::class, 'show']);
+                Route::put('/{id}', [TransferController::class, 'update']);
+                Route::delete('/{id}', [TransferController::class, 'destroy']);
+                
+                // Status management
+                Route::patch('/{id}/status', [TransferController::class, 'updateStatus']);
+                Route::patch('/bulk/status', [TransferController::class, 'bulkUpdateStatus']);
+                
+                // Transfer details
+                Route::get('/{id}/items', [TransferController::class, 'transferItems']);
+                
+                Route::get('/statistics/overview', [TransferController::class, 'statistics']);
+                Route::get('/export/data', [TransferController::class, 'export']);
+                
+                // Product-specific transfers
+                Route::get('/products/{productId}/history', [TransferController::class, 'productTransferHistory']);
+                
+                // Warehouse-specific transfers
+                Route::get('/warehouses/{warehouseId}/transfers', [TransferController::class, 'warehouseTransfers']);
+                
+                // Utility endpoints
+                Route::get('/warehouses/list', [TransferController::class, 'warehouses']);
+            });
+
+            // Warehouse Management Routes (if not already exists)
+             Route::prefix('warehouses')->group(function () {
+                Route::get('/', [WarehouseController::class, 'index']);
+                Route::post('/', [WarehouseController::class, 'store']);
+                Route::get('/{id}', [WarehouseController::class, 'show']);
+                Route::put('/{id}', [WarehouseController::class, 'update']);
+                Route::delete('/{id}', [WarehouseController::class, 'destroy']);
+                
+                // Warehouse-specific operations
+                Route::get('/{id}/transfers', [WarehouseController::class, 'transfers']);
+                Route::get('/{id}/statistics', [WarehouseController::class, 'statistics']);
+                Route::get('/{id}/inventory', [WarehouseController::class, 'inventory']);
             });
 
              Route::post('attachments/{attachmentId}', [AttachmentController::class, 'deleteAttachment']);

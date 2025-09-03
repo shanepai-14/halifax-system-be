@@ -1076,7 +1076,7 @@ class InventoryService
      * @param string|null $notes
      * @return InventoryLog
      */
-    protected function createInventoryLog(
+    public function createInventoryLog(
         int $productId,
         string $transactionType,
         string $referenceType,
