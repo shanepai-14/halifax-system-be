@@ -573,7 +573,7 @@ protected function processSingleTransferItem(Transfer $transfer, array $itemData
      */
     public function getTransfers(array $filters = [])
     {
-        $query = Transfer::with(['warehouse', 'creator', 'items.product'])
+        $query = Transfer::with(['warehouse', 'creator', 'items.product','items.product.attribute', 'items.product.category'])
                         ->orderBy('created_at', 'desc');
         
         // Apply filters
