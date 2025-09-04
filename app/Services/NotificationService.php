@@ -9,6 +9,7 @@ use App\Models\Sale;
 use App\Models\User;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Exception;
 
 class NotificationService
@@ -19,10 +20,12 @@ class NotificationService
      * @param array $data
      * @return Notification
      */
+
+
     public function createNotification(array $data): Notification
     {
         try {
-            return Notification::create([
+            $notification = Notification::create([
                 'user_id' => $data['user_id'] ?? Auth::id(),
                 'title' => $data['title'],
                 'message' => $data['message'],
@@ -33,7 +36,21 @@ class NotificationService
                 'data' => $data['data'] ?? null,
                 'expiry_date' => $data['expiry_date'] ?? now()->addDays(30)
             ]);
+
+            Log::info('Notification created successfully', [
+                'notification_id' => $notification->id,
+                'user_id' => $notification->user_id,
+                'type' => $notification->type
+            ]);
+
+            return $notification;
+
         } catch (Exception $e) {
+            Log::error('Failed to create notification', [
+                'error' => $e->getMessage(),
+                'input_data' => $data
+            ]);
+
             throw new Exception('Failed to create notification: ' . $e->getMessage());
         }
     }
