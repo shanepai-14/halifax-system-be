@@ -400,7 +400,7 @@ class InventoryService
                 InventoryAdjustment::TYPE_RETURN
             ]);
             
-            $currentProductQuantity = $product->quantity ?? 0;
+            $currentProductQuantity = $inventory->quantity ?? 0;
 
             if ($isPositive) {
                 // For addition type, create receiving report
@@ -409,7 +409,7 @@ class InventoryService
                 }
                 
                 $inventory->incrementQuantity($data['quantity']);
-                $product->quantity = $currentProductQuantity + $data['quantity'];
+               
             } else {
                 if ($currentProductQuantity < $data['quantity']) {
                     throw new Exception('Insufficient inventory for reduction');
@@ -419,9 +419,9 @@ class InventoryService
                 $this->adjustSoldQuantitiesFIFO($data['id'], $data['quantity']);
                 
                 $inventory->decrementQuantity($data['quantity']);
-                $product->quantity = $currentProductQuantity - $data['quantity'];
+               
             }
-            $product->save();
+            
             
             // Set quantity after in adjustment data
             $adjustmentData['quantity_after'] = $inventory->quantity;
