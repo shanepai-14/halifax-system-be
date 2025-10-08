@@ -122,25 +122,26 @@ class Sale extends Model
     }
 
 
-    public static function generateInvoiceNumber()
-    {
-        $prefix = 'DR-';
-        $year = date('Y');
-        $month = date('m');
-        
-        $latestInvoice = self::where('invoice_number', 'like', "{$prefix}{$year}{$month}%")
-            ->orderBy('invoice_number', 'desc')
-            ->first();
-        
-        if ($latestInvoice) {
-            $sequence = (int) substr($latestInvoice->invoice_number, -5);
-            $sequence++;
-        } else {
-            $sequence = 1;
-        }
-        
-        return sprintf("%s%s%s%05d", $prefix, $year, $month, $sequence);
+ public static function generateInvoiceNumber()
+{
+    $prefix = 'DR-';
+
+    // Find the latest invoice number starting with DR-
+    $latestInvoice = self::where('invoice_number', 'like', "{$prefix}%")
+        ->orderBy('invoice_number', 'desc')
+        ->first();
+
+    if ($latestInvoice) {
+        // Get the numeric part after the prefix
+        $lastNumber = (int) str_replace($prefix, '', $latestInvoice->invoice_number);
+        $nextNumber = $lastNumber + 1;
+    } else {
+        $nextNumber = 1;
     }
+
+    // Return formatted DR number with leading zeros (e.g. DR-00001)
+    return sprintf("%s%05d", $prefix, $nextNumber);
+}
 
 
 }
