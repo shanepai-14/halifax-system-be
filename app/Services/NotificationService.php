@@ -218,4 +218,139 @@ public function checkInventoryLevels(int $productId, int $newQuantity): void
             // Log::error('Failed to check inventory after sale: ' . $e->getMessage());
         }
     }
+
+
+    public function deleteOldReadNotifications(int $days = 2, bool $dryRun = false): array
+    {
+        try {
+            $cutoffDate = now()->subDays($days);
+            
+            $query = Notification::where('is_read', true)
+                ->where('updated_at', '<', $cutoffDate);
+            
+            $count = $query->count();
+            
+            if ($count === 0) {
+                return [
+                    'count' => 0,
+                    'deleted' => 0,
+                    'sample' => []
+                ];
+            }
+            
+            // Get sample for preview
+            $sample = $query->limit(5)
+                ->get(['id', 'user_id', 'title', 'type', 'created_at'])
+                ->map(fn($n) => [
+                    'id' => $n->id,
+                    'user_id' => $n->user_id,
+                    'title' => $n->title,
+                    'type' => $n->type,
+                    'created_at' => $n->created_at->toDateTimeString()
+                ])
+                ->toArray();
+            
+            $deleted = 0;
+            
+            if (!$dryRun) {
+                $deleted = Notification::where('is_read', true)
+                    ->where('updated_at', '<', $cutoffDate)
+                    ->delete();
+                
+                Log::info('Deleted old read notifications', [
+                    'count' => $deleted,
+                    'days' => $days,
+                    'cutoff_date' => $cutoffDate->toDateTimeString()
+                ]);
+            }
+            
+            return [
+                'count' => $count,
+                'deleted' => $deleted,
+                'sample' => $sample
+            ];
+            
+        } catch (Exception $e) {
+            Log::error('Failed to delete old read notifications', [
+                'error' => $e->getMessage(),
+                'days' => $days
+            ]);
+            
+            throw new Exception('Failed to delete old read notifications: ' . $e->getMessage());
+        }
+    }
+
+
+    public function deleteOldUnreadNotifications(int $days = 7, bool $dryRun = false): array
+    {
+        try {
+            $cutoffDate = now()->subDays($days);
+            
+            $query = Notification::where('is_read', false)
+                ->where('created_at', '<', $cutoffDate);
+            
+            $count = $query->count();
+            
+            if ($count === 0) {
+                return [
+                    'count' => 0,
+                    'deleted' => 0,
+                    'sample' => []
+                ];
+            }
+            
+            // Get sample for preview
+            $sample = $query->limit(5)
+                ->get(['id', 'user_id', 'title', 'type', 'created_at'])
+                ->map(fn($n) => [
+                    'id' => $n->id,
+                    'user_id' => $n->user_id,
+                    'title' => $n->title,
+                    'type' => $n->type,
+                    'created_at' => $n->created_at->toDateTimeString()
+                ])
+                ->toArray();
+            
+            $deleted = 0;
+            
+            if (!$dryRun) {
+                $deleted = Notification::where('is_read', false)
+                    ->where('created_at', '<', $cutoffDate)
+                    ->delete();
+                
+                Log::info('Deleted old unread notifications', [
+                    'count' => $deleted,
+                    'days' => $days,
+                    'cutoff_date' => $cutoffDate->toDateTimeString()
+                ]);
+            }
+            
+            return [
+                'count' => $count,
+                'deleted' => $deleted,
+                'sample' => $sample
+            ];
+            
+        } catch (Exception $e) {
+            Log::error('Failed to delete old unread notifications', [
+                'error' => $e->getMessage(),
+                'days' => $days
+            ]);
+            
+            throw new Exception('Failed to delete old unread notifications: ' . $e->getMessage());
+        }
+    }
+
+
+    public function deleteAllOldNotifications(int $readDays = 2, int $unreadDays = 7, bool $dryRun = false): array
+    {
+        $readResult = $this->deleteOldReadNotifications($readDays, $dryRun);
+        $unreadResult = $this->deleteOldUnreadNotifications($unreadDays, $dryRun);
+        
+        return [
+            'read' => $readResult,
+            'unread' => $unreadResult,
+            'total_deleted' => $readResult['deleted'] + $unreadResult['deleted']
+        ];
+    }
 }
