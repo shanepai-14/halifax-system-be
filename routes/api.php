@@ -27,7 +27,6 @@ use App\Http\Controllers\UserController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\BracketPricingController;
 use App\Http\Controllers\ReportsController;
-use App\Http\Controllers\PrintController;
 use App\Http\Controllers\CustomerCustomPricingController;
 use App\Http\Controllers\TransferController;
 use App\Http\Controllers\WarehouseController;
@@ -38,15 +37,6 @@ use App\Http\Controllers\WarehouseController;
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
 
-Route::prefix('print')->group(function () {
-    Route::get('/test', [PrintController::class, 'testPrinter']);
-    Route::post('/invoice', [PrintController::class, 'printInvoice']);
-    Route::post('/delivery-receipt', [PrintController::class, 'printDeliveryReceipt']);
-    Route::post('/text', [PrintController::class, 'printText']);
-    Route::get('/find-method', [PrintController::class, 'findWorkingMethod']);
-    Route::get('/lpt-status', [PrintController::class, 'checkLptStatus']);
-    
-});
     
     Route::middleware('auth:sanctum')->group(function () {
         Route::post('/logout', [AuthController::class, 'logout']);
