@@ -6,6 +6,7 @@ use App\Services\SaleService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Facades\Storage;
 use Exception;
 
 class SaleController extends Controller
@@ -384,4 +385,46 @@ class SaleController extends Controller
                 ], 500);
             }
         }
+
+        public function saveDeliveryReport(Request $request)
+    {
+        $request->validate([
+            'content' => 'required|string',
+            'invoice_number' => 'required|string',
+            'sale_id' => 'required|integer|exists:sales,id',
+            'filename' => 'required|string'
+        ]);
+
+        try {
+            // Create directory structure: delivery_reports/YYYY/MM/
+            $directory = 'delivery_reports/';
+            
+            // Generate unique filename to prevent overwrites
+            $filename = pathinfo($request->filename, PATHINFO_FILENAME);
+            $extension = pathinfo($request->filename, PATHINFO_EXTENSION) ?: 'txt';
+            $finalFilename = $filename . '_' . time() . '.' . $extension;
+            
+            // Full path for the file
+            $filePath = $directory . '/' . $finalFilename;
+            
+            // Save the text content to storage
+            Storage::disk('local')->put($filePath, $request->content);
+            
+
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Delivery report saved successfully',
+                'file_path' => $filePath,
+                'file_name' => $finalFilename
+            ], 200);
+            
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to save delivery report',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
 }

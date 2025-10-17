@@ -185,6 +185,7 @@ Route::post('/login', [AuthController::class, 'login']);
                 Route::get('/invoice/{invoiceNumber}', [SaleController::class, 'getByInvoiceNumber']);
                 Route::get('/{id}', [SaleController::class, 'show']);
                 Route::put('/{id}', [SaleController::class, 'update']);
+                Route::post('/print', [SaleController::class, 'saveDeliveryReport']);
                 Route::put('/{id}/payment', [SaleController::class, 'updatePayment']);
                 Route::put('/{id}/cancel', [SaleController::class, 'cancel']);
                 Route::put('/{id}/deliver', [SaleController::class, 'markAsDelivered']);
